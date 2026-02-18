@@ -13,7 +13,10 @@ import kotlin.math.sin
  */
 enum class PowerUpType {
     SHIELD,
-    SPEED_BOOST
+    SPEED_BOOST,
+    SLOW_MOTION,
+    MISSILE_JAMMER,
+    DOUBLE_SCORE
 }
 
 /**
@@ -84,7 +87,19 @@ class PowerUp(
             }
             PowerUpType.SPEED_BOOST -> {
                 color = Constants.SPEED_BOOST_COLOR.toInt()
-                iconText = "\u26A1" // lightning bolt unicode
+                iconText = "\u26A1" // lightning bolt
+            }
+            PowerUpType.SLOW_MOTION -> {
+                color = Constants.SLOW_MOTION_COLOR.toInt()
+                iconText = "\u23F3" // hourglass
+            }
+            PowerUpType.MISSILE_JAMMER -> {
+                color = Constants.MISSILE_JAMMER_COLOR.toInt()
+                iconText = "J"
+            }
+            PowerUpType.DOUBLE_SCORE -> {
+                color = Constants.DOUBLE_SCORE_COLOR.toInt()
+                iconText = "2X"
             }
         }
 

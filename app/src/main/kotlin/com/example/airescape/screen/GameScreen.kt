@@ -57,8 +57,10 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
     // ── Lottie blast ──────────────────────────────────────────────────
     private var blastLoaded = false
 
-    // ── Helicopter sound ─────────────────────────────────────────────
-    private var helicopterPlayer: MediaPlayer? = null
+    // ── Helicopter sound (gapless looping with two chained players) ──
+    private var helicopterPlayerA: MediaPlayer? = null
+    private var helicopterPlayerB: MediaPlayer? = null
+    private var helicopterActive = false
 
     // ── Sky / cloud colors ───────────────────────────────────────────
     private val skyColor = 0xFF80CBC4.toInt()  // nice teal sky
@@ -100,6 +102,21 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
 
     private val boostBarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Constants.SPEED_BOOST_COLOR.toInt()
+        style = Paint.Style.FILL
+    }
+
+    private val slowMotionBarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Constants.SLOW_MOTION_COLOR.toInt()
+        style = Paint.Style.FILL
+    }
+
+    private val jammerBarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Constants.MISSILE_JAMMER_COLOR.toInt()
+        style = Paint.Style.FILL
+    }
+
+    private val doubleScoreBarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Constants.DOUBLE_SCORE_COLOR.toInt()
         style = Paint.Style.FILL
     }
 
@@ -317,7 +334,7 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
 
     private fun loadPlaneBitmap(): Bitmap? {
         return try {
-            val drawable = ContextCompat.getDrawable(surfaceView.context, R.drawable.plane_second)
+            val drawable = ContextCompat.getDrawable(surfaceView.context, planeConfig.drawableRes)
                 ?: return null
             val size = (Constants.PLAYER_RADIUS * 4f).toInt()
             val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
@@ -421,26 +438,73 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         Renderer.drawButton(canvas, menuButtonRect, "MENU", color = 0xFF78909C, textColor = 0xFFFFFFFF)
     }
 
+    private fun createHelicopterPlayer(): MediaPlayer? {
+        return MediaPlayer.create(surfaceView.context, R.raw.helicopter)?.apply {
+            setVolume(0.25f, 0.25f)
+        }
+    }
+
     private fun startHelicopterSound() {
         if (!GameData.soundEnabled) return
         surfaceView.post {
             try {
-                helicopterPlayer = MediaPlayer.create(surfaceView.context, R.raw.helicopter)?.apply {
-                    isLooping = true
-                    setVolume(0.25f, 0.25f)
-                    start()
+                helicopterActive = true
+                val a = createHelicopterPlayer() ?: return@post
+                val b = createHelicopterPlayer() ?: run { a.release(); return@post }
+                helicopterPlayerA = a
+                helicopterPlayerB = b
+
+                // Chain A -> B for gapless transition
+                a.setNextMediaPlayer(b)
+
+                // When A finishes, reset it and chain B -> A
+                a.setOnCompletionListener {
+                    if (!helicopterActive) return@setOnCompletionListener
+                    try {
+                        it.reset()
+                        val afd = surfaceView.context.resources.openRawResourceFd(R.raw.helicopter)
+                        it.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                        afd.close()
+                        it.prepare()
+                        it.setVolume(0.25f, 0.25f)
+                        b.setNextMediaPlayer(it)
+                    } catch (_: Exception) { }
                 }
+
+                // When B finishes, reset it and chain A -> B
+                b.setOnCompletionListener {
+                    if (!helicopterActive) return@setOnCompletionListener
+                    try {
+                        it.reset()
+                        val afd = surfaceView.context.resources.openRawResourceFd(R.raw.helicopter)
+                        it.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                        afd.close()
+                        it.prepare()
+                        it.setVolume(0.25f, 0.25f)
+                        a.setNextMediaPlayer(it)
+                    } catch (_: Exception) { }
+                }
+
+                a.start()
             } catch (_: Exception) { }
         }
     }
 
     private fun stopHelicopterSound() {
         surfaceView.post {
+            helicopterActive = false
             try {
-                helicopterPlayer?.stop()
-                helicopterPlayer?.release()
-                helicopterPlayer = null
+                helicopterPlayerA?.setOnCompletionListener(null)
+                helicopterPlayerA?.stop()
+                helicopterPlayerA?.release()
             } catch (_: Exception) { }
+            try {
+                helicopterPlayerB?.setOnCompletionListener(null)
+                helicopterPlayerB?.stop()
+                helicopterPlayerB?.release()
+            } catch (_: Exception) { }
+            helicopterPlayerA = null
+            helicopterPlayerB = null
         }
     }
 
@@ -470,6 +534,9 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
             val color = when (pu.type) {
                 com.example.airescape.entity.PowerUpType.SHIELD -> Constants.SHIELD_COLOR.toInt()
                 com.example.airescape.entity.PowerUpType.SPEED_BOOST -> Constants.SPEED_BOOST_COLOR.toInt()
+                com.example.airescape.entity.PowerUpType.SLOW_MOTION -> Constants.SLOW_MOTION_COLOR.toInt()
+                com.example.airescape.entity.PowerUpType.MISSILE_JAMMER -> Constants.MISSILE_JAMMER_COLOR.toInt()
+                com.example.airescape.entity.PowerUpType.DOUBLE_SCORE -> Constants.DOUBLE_SCORE_COLOR.toInt()
             }
             drawEdgeArrow(canvas, sx, sy, margin, arrowSize, color, 200)
         }
@@ -589,18 +656,22 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         timePaint.textSize = smallTextSize
         canvas.drawText(timeStr, padding, padding + smallTextSize, timePaint)
 
+        // Power-up timer bars (stacked below score)
+        val barWidth = screenWidth * 0.3f
+        val barHeight = screenHeight * 0.012f
+        val barX = (screenWidth - barWidth) / 2f
+        val barSpacing = screenHeight * 0.04f
+        var barIndex = 0
+
         // Shield timer bar
         if (entityManager.player.shieldActive) {
-            val barWidth = screenWidth * 0.3f
-            val barHeight = screenHeight * 0.012f
-            val barX = (screenWidth - barWidth) / 2f
-            val barY = padding + hudTextSize * 1.8f
+            val barY = padding + hudTextSize * 1.8f + barIndex * barSpacing
 
             barRect.set(barX, barY, barX + barWidth, barY + barHeight)
             canvas.drawRoundRect(barRect, 4f, 4f, barBgPaint)
 
-            val shieldFill = (entityManager.player.shieldTimer / Constants.SHIELD_DURATION).coerceIn(0f, 1f)
-            barRect.set(barX, barY, barX + barWidth * shieldFill, barY + barHeight)
+            val fill = (entityManager.player.shieldTimer / Constants.SHIELD_DURATION).coerceIn(0f, 1f)
+            barRect.set(barX, barY, barX + barWidth * fill, barY + barHeight)
             canvas.drawRoundRect(barRect, 4f, 4f, shieldBarPaint)
 
             Renderer.drawText(
@@ -610,21 +681,18 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
                 color = Constants.SHIELD_COLOR,
                 align = Paint.Align.CENTER
             )
+            barIndex++
         }
 
         // Speed boost timer bar
         if (entityManager.player.speedBoostActive) {
-            val barWidth = screenWidth * 0.3f
-            val barHeight = screenHeight * 0.012f
-            val barX = (screenWidth - barWidth) / 2f
-            val offsetY = if (entityManager.player.shieldActive) screenHeight * 0.04f else 0f
-            val barY = padding + hudTextSize * 1.8f + offsetY
+            val barY = padding + hudTextSize * 1.8f + barIndex * barSpacing
 
             barRect.set(barX, barY, barX + barWidth, barY + barHeight)
             canvas.drawRoundRect(barRect, 4f, 4f, barBgPaint)
 
-            val boostFill = (entityManager.player.speedBoostTimer / Constants.SPEED_BOOST_DURATION).coerceIn(0f, 1f)
-            barRect.set(barX, barY, barX + barWidth * boostFill, barY + barHeight)
+            val fill = (entityManager.player.speedBoostTimer / Constants.SPEED_BOOST_DURATION).coerceIn(0f, 1f)
+            barRect.set(barX, barY, barX + barWidth * fill, barY + barHeight)
             canvas.drawRoundRect(barRect, 4f, 4f, boostBarPaint)
 
             Renderer.drawText(
@@ -632,6 +700,69 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
                 screenWidth / 2f, barY - 4f,
                 size = smallTextSize * 0.7f,
                 color = Constants.SPEED_BOOST_COLOR,
+                align = Paint.Align.CENTER
+            )
+            barIndex++
+        }
+
+        // Slow motion timer bar
+        if (entityManager.player.slowMotionActive) {
+            val barY = padding + hudTextSize * 1.8f + barIndex * barSpacing
+
+            barRect.set(barX, barY, barX + barWidth, barY + barHeight)
+            canvas.drawRoundRect(barRect, 4f, 4f, barBgPaint)
+
+            val fill = (entityManager.player.slowMotionTimer / Constants.SLOW_MOTION_DURATION).coerceIn(0f, 1f)
+            barRect.set(barX, barY, barX + barWidth * fill, barY + barHeight)
+            canvas.drawRoundRect(barRect, 4f, 4f, slowMotionBarPaint)
+
+            Renderer.drawText(
+                canvas, "SLOW-MO",
+                screenWidth / 2f, barY - 4f,
+                size = smallTextSize * 0.7f,
+                color = Constants.SLOW_MOTION_COLOR,
+                align = Paint.Align.CENTER
+            )
+            barIndex++
+        }
+
+        // Missile jammer timer bar
+        if (entityManager.player.missileJammerActive) {
+            val barY = padding + hudTextSize * 1.8f + barIndex * barSpacing
+
+            barRect.set(barX, barY, barX + barWidth, barY + barHeight)
+            canvas.drawRoundRect(barRect, 4f, 4f, barBgPaint)
+
+            val fill = (entityManager.player.missileJammerTimer / Constants.MISSILE_JAMMER_DURATION).coerceIn(0f, 1f)
+            barRect.set(barX, barY, barX + barWidth * fill, barY + barHeight)
+            canvas.drawRoundRect(barRect, 4f, 4f, jammerBarPaint)
+
+            Renderer.drawText(
+                canvas, "JAMMER",
+                screenWidth / 2f, barY - 4f,
+                size = smallTextSize * 0.7f,
+                color = Constants.MISSILE_JAMMER_COLOR,
+                align = Paint.Align.CENTER
+            )
+            barIndex++
+        }
+
+        // Double score timer bar
+        if (entityManager.player.doubleScoreActive) {
+            val barY = padding + hudTextSize * 1.8f + barIndex * barSpacing
+
+            barRect.set(barX, barY, barX + barWidth, barY + barHeight)
+            canvas.drawRoundRect(barRect, 4f, 4f, barBgPaint)
+
+            val fill = (entityManager.player.doubleScoreTimer / Constants.DOUBLE_SCORE_DURATION).coerceIn(0f, 1f)
+            barRect.set(barX, barY, barX + barWidth * fill, barY + barHeight)
+            canvas.drawRoundRect(barRect, 4f, 4f, doubleScoreBarPaint)
+
+            Renderer.drawText(
+                canvas, "2X SCORE",
+                screenWidth / 2f, barY - 4f,
+                size = smallTextSize * 0.7f,
+                color = Constants.DOUBLE_SCORE_COLOR,
                 align = Paint.Align.CENTER
             )
         }

@@ -45,6 +45,24 @@ class Player : Entity(
     var speedBoostTimer: Float = 0f
         private set
 
+    // ── Slow motion (slows missiles) ─────────────────────────────
+    var slowMotionActive: Boolean = false
+        private set
+    var slowMotionTimer: Float = 0f
+        private set
+
+    // ── Missile jammer (freezes missiles) ────────────────────────
+    var missileJammerActive: Boolean = false
+        private set
+    var missileJammerTimer: Float = 0f
+        private set
+
+    // ── Double score ─────────────────────────────────────────────
+    var doubleScoreActive: Boolean = false
+        private set
+    var doubleScoreTimer: Float = 0f
+        private set
+
     // ── Trail particles ────────────────────────────────────────────
     data class TrailParticle(
         var position: Vector2,
@@ -85,6 +103,21 @@ class Player : Entity(
         shieldTimer = 0f
     }
 
+    fun activateSlowMotion() {
+        slowMotionActive = true
+        slowMotionTimer = Constants.SLOW_MOTION_DURATION
+    }
+
+    fun activateMissileJammer() {
+        missileJammerActive = true
+        missileJammerTimer = Constants.MISSILE_JAMMER_DURATION
+    }
+
+    fun activateDoubleScore() {
+        doubleScoreActive = true
+        doubleScoreTimer = Constants.DOUBLE_SCORE_DURATION
+    }
+
     // ── Update ─────────────────────────────────────────────────────
 
     override fun update(dt: Float) {
@@ -121,6 +154,33 @@ class Player : Entity(
             if (speedBoostTimer <= 0f) {
                 speedBoostActive = false
                 speedBoostTimer = 0f
+            }
+        }
+
+        // Slow motion timer
+        if (slowMotionActive) {
+            slowMotionTimer -= dt
+            if (slowMotionTimer <= 0f) {
+                slowMotionActive = false
+                slowMotionTimer = 0f
+            }
+        }
+
+        // Missile jammer timer
+        if (missileJammerActive) {
+            missileJammerTimer -= dt
+            if (missileJammerTimer <= 0f) {
+                missileJammerActive = false
+                missileJammerTimer = 0f
+            }
+        }
+
+        // Double score timer
+        if (doubleScoreActive) {
+            doubleScoreTimer -= dt
+            if (doubleScoreTimer <= 0f) {
+                doubleScoreActive = false
+                doubleScoreTimer = 0f
             }
         }
 

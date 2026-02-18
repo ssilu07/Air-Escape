@@ -1,10 +1,12 @@
 package com.example.airescape.screen
 
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.view.MotionEvent
+import androidx.core.content.ContextCompat
 import com.example.airescape.data.Constants
 import com.example.airescape.data.GameData
 import com.example.airescape.data.PlaneConfig
@@ -88,6 +90,25 @@ class PlaneSelectScreen(private val surfaceView: GameSurfaceView) : Screen {
 
     private val planePath = Path()
 
+    /** Cached plane preview bitmaps keyed by drawable resource id. */
+    private val planeBitmapCache = mutableMapOf<Int, Bitmap>()
+
+    private fun getPlanePreviewBitmap(config: PlaneConfig, size: Int): Bitmap? {
+        planeBitmapCache[config.drawableRes]?.let { return it }
+        return try {
+            val drawable = ContextCompat.getDrawable(surfaceView.context, config.drawableRes)
+                ?: return null
+            val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val c = Canvas(bitmap)
+            drawable.setBounds(0, 0, size, size)
+            drawable.draw(c)
+            planeBitmapCache[config.drawableRes] = bitmap
+            bitmap
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     // ── Layout ───────────────────────────────────────────────────────
 
     private fun layoutIfNeeded() {
@@ -98,27 +119,30 @@ class PlaneSelectScreen(private val surfaceView: GameSurfaceView) : Screen {
         screenWidth = sw
         screenHeight = sh
 
-        val cols = 2
-        val rows = 5
+        // Back button (top-left)
         val padding = sw * 0.04f
+        val backW = sw * 0.2f
+        val backH = sh * 0.035f
+        backButtonRect.set(padding, sh * 0.015f, padding + backW, sh * 0.015f + backH)
+
+        // Card grid below header
+        val cols = 2
+        val rows = 3
         val topMargin = sh * 0.1f
+        val bottomMargin = sh * 0.02f
         val cardAreaWidth = sw - padding * 2f
-        val cardAreaHeight = sh * 0.78f
-        val cardW = (cardAreaWidth - (cols - 1) * padding) / cols
-        val cardH = (cardAreaHeight - (rows - 1) * padding) / rows
+        val cardAreaHeight = sh - topMargin - bottomMargin
+        val gap = sw * 0.03f
+        val cardW = (cardAreaWidth - (cols - 1) * gap) / cols
+        val cardH = (cardAreaHeight - (rows - 1) * gap) / rows
 
         for (i in planes.indices) {
             val col = i % cols
             val row = i / cols
-            val x = padding + col * (cardW + padding)
-            val y = topMargin + row * (cardH + padding)
+            val x = padding + col * (cardW + gap)
+            val y = topMargin + row * (cardH + gap)
             cardRects[i].set(x, y, x + cardW, y + cardH)
         }
-
-        // Back button (top-left)
-        val backW = sw * 0.25f
-        val backH = sh * 0.04f
-        backButtonRect.set(padding, sh * 0.02f, padding + backW, sh * 0.02f + backH)
 
         layoutDone = true
     }
@@ -134,21 +158,23 @@ class PlaneSelectScreen(private val surfaceView: GameSurfaceView) : Screen {
 
         canvas.drawColor(Constants.BACKGROUND_COLOR.toInt())
 
-        // Title
-        titlePaint.textSize = screenWidth * 0.07f
-        canvas.drawText("SELECT PLANE", screenWidth / 2f, screenHeight * 0.06f, titlePaint)
+        val padding = screenWidth * 0.04f
 
-        // Total stars (top right)
-        starsHudPaint.textSize = screenWidth * 0.04f
-        val starsText = "\u2605 ${GameData.totalStars}"
-        canvas.drawText(starsText, screenWidth - screenWidth * 0.03f, screenHeight * 0.04f, starsHudPaint)
-
-        // Back button
+        // Back button (top-left)
         Renderer.drawButton(
             canvas, backButtonRect, "BACK",
             color = 0xFF546E7A,
             textColor = 0xFFFFFFFF
         )
+
+        // Title (centered, below back button row)
+        titlePaint.textSize = screenWidth * 0.06f
+        canvas.drawText("SELECT PLANE", screenWidth / 2f, screenHeight * 0.075f, titlePaint)
+
+        // Total stars (top-right, aligned with back button)
+        starsHudPaint.textSize = screenWidth * 0.038f
+        val starsText = "\u2605 ${GameData.totalStars}"
+        canvas.drawText(starsText, screenWidth - padding, backButtonRect.centerY() + screenWidth * 0.013f, starsHudPaint)
 
         // Plane cards
         val selectedId = GameData.selectedPlane
@@ -156,51 +182,52 @@ class PlaneSelectScreen(private val surfaceView: GameSurfaceView) : Screen {
             val plane = planes[i]
             val rect = cardRects[i]
             val unlocked = GameData.isPlaneUnlocked(plane.id)
+            val cardH = rect.height()
+            val cardW = rect.width()
 
             // Card background
             cardBgPaint.color = 0xFF2A2A3E.toInt()
-            canvas.drawRoundRect(rect, 12f, 12f, cardBgPaint)
+            canvas.drawRoundRect(rect, 14f, 14f, cardBgPaint)
 
-            // Plane preview (colored triangle in center of card)
+            // Plane preview bitmap (upper half of card)
             val previewCenterX = rect.centerX()
-            val previewCenterY = rect.top + rect.height() * 0.35f
-            val previewSize = rect.width() * 0.25f
+            val previewCenterY = rect.top + cardH * 0.32f
+            val previewSize = (cardW * 0.35f).coerceAtMost(cardH * 0.38f)
             drawPlanePreview(canvas, previewCenterX, previewCenterY, previewSize, plane)
 
             // Name
-            namePaint.textSize = rect.width() * 0.18f
-            canvas.drawText(plane.name, rect.centerX(), rect.top + rect.height() * 0.62f, namePaint)
+            namePaint.textSize = cardW * 0.15f
+            canvas.drawText(plane.name, rect.centerX(), rect.top + cardH * 0.66f, namePaint)
 
             // Speed modifier
             val speedText = String.format("Speed: %.0f%%", plane.speedModifier * 100)
-            detailPaint.textSize = rect.width() * 0.14f
-            canvas.drawText(speedText, rect.centerX(), rect.top + rect.height() * 0.75f, detailPaint)
+            detailPaint.textSize = cardW * 0.11f
+            canvas.drawText(speedText, rect.centerX(), rect.top + cardH * 0.77f, detailPaint)
 
             if (!unlocked) {
                 // Locked overlay
-                canvas.drawRoundRect(rect, 12f, 12f, lockedOverlayPaint)
+                canvas.drawRoundRect(rect, 14f, 14f, lockedOverlayPaint)
 
                 // Lock icon and cost
-                costPaint.textSize = rect.width() * 0.18f
+                costPaint.textSize = cardW * 0.15f
                 val lockText = "\uD83D\uDD12 ${plane.unlockCost}"
-                canvas.drawText(lockText, rect.centerX(), rect.top + rect.height() * 0.92f, costPaint)
+                canvas.drawText(lockText, rect.centerX(), rect.top + cardH * 0.92f, costPaint)
             } else {
-                // "Owned" or "Selected" label
                 if (plane.id == selectedId) {
                     // Selected border
-                    canvas.drawRoundRect(rect, 12f, 12f, selectedPaint)
+                    canvas.drawRoundRect(rect, 14f, 14f, selectedPaint)
 
                     detailPaint.color = 0xFF00E676.toInt()
-                    detailPaint.textSize = rect.width() * 0.15f
-                    canvas.drawText("SELECTED", rect.centerX(), rect.top + rect.height() * 0.92f, detailPaint)
+                    detailPaint.textSize = cardW * 0.12f
+                    canvas.drawText("SELECTED", rect.centerX(), rect.top + cardH * 0.91f, detailPaint)
                     detailPaint.color = 0xFFBBBBBB.toInt()
                 } else {
                     // Normal unlocked border
                     cardBorderPaint.color = 0xFF555555.toInt()
-                    canvas.drawRoundRect(rect, 12f, 12f, cardBorderPaint)
+                    canvas.drawRoundRect(rect, 14f, 14f, cardBorderPaint)
 
-                    detailPaint.textSize = rect.width() * 0.14f
-                    canvas.drawText("TAP TO SELECT", rect.centerX(), rect.top + rect.height() * 0.92f, detailPaint)
+                    detailPaint.textSize = cardW * 0.11f
+                    canvas.drawText("TAP TO SELECT", rect.centerX(), rect.top + cardH * 0.91f, detailPaint)
                 }
             }
         }
@@ -253,51 +280,39 @@ class PlaneSelectScreen(private val surfaceView: GameSurfaceView) : Screen {
         size: Float,
         config: PlaneConfig
     ) {
-        // Draw a simple dart/chevron shape pointing up
-        val angle = -Math.PI.toFloat() / 2f  // pointing up
-        val cosA = cos(angle)
-        val sinA = sin(angle)
-        val perpX = -sinA
-        val perpY = cosA
+        val bitmapSize = (size * 1.4f).toInt().coerceAtLeast(1)
+        val bmp = getPlanePreviewBitmap(config, bitmapSize)
+        if (bmp != null) {
+            canvas.drawBitmap(bmp, cx - bmp.width / 2f, cy - bmp.height / 2f, null)
+        } else {
+            // Fallback: simple dart/chevron shape
+            val angle = -Math.PI.toFloat() / 2f
+            val cosA = cos(angle)
+            val sinA = sin(angle)
+            val perpX = -sinA
+            val perpY = cosA
 
-        val noseX = cx + cosA * size
-        val noseY = cy + sinA * size
-        val wingLX = cx - cosA * size * 0.5f + perpX * size * 0.7f
-        val wingLY = cy - sinA * size * 0.5f + perpY * size * 0.7f
-        val wingRX = cx - cosA * size * 0.5f - perpX * size * 0.7f
-        val wingRY = cy - sinA * size * 0.5f - perpY * size * 0.7f
-        val tailX = cx - cosA * size * 0.35f
-        val tailY = cy - sinA * size * 0.35f
+            val noseX = cx + cosA * size
+            val noseY = cy + sinA * size
+            val wingLX = cx - cosA * size * 0.5f + perpX * size * 0.7f
+            val wingLY = cy - sinA * size * 0.5f + perpY * size * 0.7f
+            val wingRX = cx - cosA * size * 0.5f - perpX * size * 0.7f
+            val wingRY = cy - sinA * size * 0.5f - perpY * size * 0.7f
+            val tailX = cx - cosA * size * 0.35f
+            val tailY = cy - sinA * size * 0.35f
 
-        planePath.reset()
-        planePath.moveTo(noseX, noseY)
-        planePath.lineTo(wingLX, wingLY)
-        planePath.lineTo(tailX, tailY)
-        planePath.lineTo(wingRX, wingRY)
-        planePath.close()
+            planePath.reset()
+            planePath.moveTo(noseX, noseY)
+            planePath.lineTo(wingLX, wingLY)
+            planePath.lineTo(tailX, tailY)
+            planePath.lineTo(wingRX, wingRY)
+            planePath.close()
 
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = config.colorPrimary.toInt()
-            style = Paint.Style.FILL
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = config.colorPrimary.toInt()
+                style = Paint.Style.FILL
+            }
+            canvas.drawPath(planePath, paint)
         }
-        canvas.drawPath(planePath, paint)
-
-        // Secondary color accent (small inner triangle)
-        val accentSize = size * 0.5f
-        val aNoseX = cx + cosA * accentSize
-        val aNoseY = cy + sinA * accentSize
-        val aWingLX = cx - cosA * accentSize * 0.3f + perpX * accentSize * 0.35f
-        val aWingLY = cy - sinA * accentSize * 0.3f + perpY * accentSize * 0.35f
-        val aWingRX = cx - cosA * accentSize * 0.3f - perpX * accentSize * 0.35f
-        val aWingRY = cy - sinA * accentSize * 0.3f - perpY * accentSize * 0.35f
-
-        planePath.reset()
-        planePath.moveTo(aNoseX, aNoseY)
-        planePath.lineTo(aWingLX, aWingLY)
-        planePath.lineTo(aWingRX, aWingRY)
-        planePath.close()
-
-        paint.color = config.colorSecondary.toInt()
-        canvas.drawPath(planePath, paint)
     }
 }

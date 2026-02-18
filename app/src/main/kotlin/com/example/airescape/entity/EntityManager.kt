@@ -163,7 +163,14 @@ class EntityManager {
 
         for (missile in missiles) {
             missile.targetPosition = player.position
-            missile.update(dt)
+            if (player.missileJammerActive) {
+                // Jammed: missiles completely frozen, skip update
+            } else if (player.slowMotionActive) {
+                // Slow motion: missiles update at reduced speed
+                missile.update(dt * Constants.SLOW_MOTION_MULTIPLIER)
+            } else {
+                missile.update(dt)
+            }
         }
         for (star in stars) star.update(dt)
         for (powerUp in powerUps) powerUp.update(dt)
@@ -215,7 +222,7 @@ class EntityManager {
 
         scoreTimeAccumulator += dt
         if (scoreTimeAccumulator >= 1f) {
-            score += 1
+            score += if (player.doubleScoreActive) 2 else 1
             scoreTimeAccumulator -= 1f
         }
     }
@@ -281,7 +288,7 @@ class EntityManager {
                     val mid = (a.position + b.position) * 0.5f
                     explosions.add(Explosion(mid, Constants.MISSILE_COLOR.toInt()))
                     lottieBlasts.add(LottieBlast(mid, size = 350f))
-                    score += 25
+                    score += if (player.doubleScoreActive) 50 else 25
                     SoundManager.playMissileCollide()
                 }
             }
@@ -301,7 +308,7 @@ class EntityManager {
             ) {
                 star.alive = false
                 starsCollected++
-                score += 10
+                score += if (player.doubleScoreActive) 20 else 10
                 SoundManager.playStarCollect()
             }
         }
@@ -322,6 +329,9 @@ class EntityManager {
                 when (pu.type) {
                     PowerUpType.SHIELD -> player.activateShield()
                     PowerUpType.SPEED_BOOST -> player.activateSpeedBoost()
+                    PowerUpType.SLOW_MOTION -> player.activateSlowMotion()
+                    PowerUpType.MISSILE_JAMMER -> player.activateMissileJammer()
+                    PowerUpType.DOUBLE_SCORE -> player.activateDoubleScore()
                 }
                 SoundManager.playPowerUp()
             }
@@ -382,7 +392,8 @@ class EntityManager {
         val margin = 50f
         val x = cameraX + margin + Random.nextFloat() * (screenWidth - margin * 2)
         val y = cameraY + margin + Random.nextFloat() * (screenHeight - margin * 2)
-        val type = if (Random.nextBoolean()) PowerUpType.SHIELD else PowerUpType.SPEED_BOOST
+        val allTypes = PowerUpType.entries
+        val type = allTypes[Random.nextInt(allTypes.size)]
         powerUps.add(PowerUp(Vector2(x, y), type))
     }
 }

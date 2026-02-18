@@ -34,6 +34,16 @@ object Constants {
     const val SPEED_BOOST_DURATION = 4.0f    // seconds
     const val SPEED_BOOST_MULTIPLIER = 1.8f
 
+    // Slow motion (slows all missiles)
+    const val SLOW_MOTION_DURATION = 5.0f    // seconds
+    const val SLOW_MOTION_MULTIPLIER = 0.3f  // missiles at 30% speed
+
+    // Missile jammer (freezes all missiles)
+    const val MISSILE_JAMMER_DURATION = 3.0f // seconds
+
+    // Double score
+    const val DOUBLE_SCORE_DURATION = 8.0f   // seconds
+
     // Hard mode
     const val HARD_MODE_SPAWN_MULTIPLIER = 1.6f     // missiles spawn 60% faster
     const val HARD_MODE_MISSILE_SPEED_MULT = 1.3f   // missiles move 30% faster
@@ -50,6 +60,9 @@ object Constants {
     const val STAR_COLOR = 0xFFFFD700        // gold
     const val SHIELD_COLOR = 0xFF4FC3F7      // light blue
     const val SPEED_BOOST_COLOR = 0xFFFF9800 // orange
+    const val SLOW_MOTION_COLOR = 0xFF7C4DFF // purple
+    const val MISSILE_JAMMER_COLOR = 0xFFE040FB // magenta/pink
+    const val DOUBLE_SCORE_COLOR = 0xFFFFD740 // amber/gold
     const val MISSILE_COLOR = 0xFFFF1744     // red
     const val PLAYER_DEFAULT_COLOR = 0xFF00E676 // green
 }
