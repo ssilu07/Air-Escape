@@ -6,9 +6,10 @@ import android.os.Bundle
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
-import com.example.airescape.engine.GameSurfaceView
-import com.example.airescape.screen.MenuScreen
+import android.widget.FrameLayout
+import com.example.airescape.ads.AdManager
 import com.example.airescape.data.GameData
+import com.example.airescape.engine.GameSurfaceView
 
 class MainActivity : Activity() {
     private lateinit var gameSurfaceView: GameSurfaceView
@@ -16,8 +17,18 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         GameData.init(this)
+
+        // FrameLayout to hold SurfaceView + banner ad overlay
+        val rootLayout = FrameLayout(this)
         gameSurfaceView = GameSurfaceView(this)
-        setContentView(gameSurfaceView)
+        rootLayout.addView(gameSurfaceView)
+
+        setContentView(rootLayout)
+
+        // Initialize AdMob and create banner
+        AdManager.init(this)
+        AdManager.createBanner(rootLayout)
+
         hideSystemUI()
     }
 
@@ -31,6 +42,11 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         gameSurfaceView.pause()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        AdManager.destroy()
     }
 
     @Deprecated("Deprecated in Java")

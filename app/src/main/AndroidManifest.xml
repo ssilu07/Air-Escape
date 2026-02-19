@@ -1,9 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="Missiles!"
-        android:icon="@drawable/air_escape"
-        android:roundIcon="@drawable/air_escape"
+        android:label="Air Escape"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/GameTheme">
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-1811294933992844~3548299390"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"

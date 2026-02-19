@@ -1,8 +1,14 @@
 package com.example.airescape.engine
 
+import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import android.media.MediaCodec
+import android.media.MediaExtractor
+import android.media.MediaFormat
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.PI
@@ -117,7 +123,152 @@ object SoundManager {
         )
     }
 
+    // ---- Helicopter continuous loop (AudioTrack streaming, truly gapless) ----
+
+    @Volatile private var helicopterPcm: ShortArray? = null
+    @Volatile private var helicopterTrack: AudioTrack? = null
+    @Volatile private var helicopterLooping = false
+    private var helicopterThread: Thread? = null
+    private var helicopterSampleRate = 44100
+
+    /** Decode a raw MP3 resource into a PCM ShortArray. Call once. */
+    fun decodeHelicopterSound(context: Context, rawResId: Int) {
+        if (helicopterPcm != null) return
+        try {
+            val afd = context.resources.openRawResourceFd(rawResId)
+            val extractor = MediaExtractor()
+            extractor.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+            afd.close()
+
+            val format = extractor.getTrackFormat(0)
+            helicopterSampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+            val channelCount = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+            val mime = format.getString(MediaFormat.KEY_MIME) ?: return
+
+            extractor.selectTrack(0)
+            val codec = MediaCodec.createDecoderByType(mime)
+            codec.configure(format, null, null, 0)
+            codec.start()
+
+            val pcmBytes = mutableListOf<Byte>()
+            val info = MediaCodec.BufferInfo()
+            var inputDone = false
+
+            while (true) {
+                // Feed input
+                if (!inputDone) {
+                    val inIdx = codec.dequeueInputBuffer(10_000)
+                    if (inIdx >= 0) {
+                        val inBuf = codec.getInputBuffer(inIdx)!!
+                        val read = extractor.readSampleData(inBuf, 0)
+                        if (read < 0) {
+                            codec.queueInputBuffer(inIdx, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                            inputDone = true
+                        } else {
+                            codec.queueInputBuffer(inIdx, 0, read, extractor.sampleTime, 0)
+                            extractor.advance()
+                        }
+                    }
+                }
+                // Drain output
+                val outIdx = codec.dequeueOutputBuffer(info, 10_000)
+                if (outIdx >= 0) {
+                    val outBuf = codec.getOutputBuffer(outIdx)!!
+                    val chunk = ByteArray(info.size)
+                    outBuf.get(chunk)
+                    pcmBytes.addAll(chunk.toList())
+                    codec.releaseOutputBuffer(outIdx, false)
+                    if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) break
+                } else if (outIdx == MediaCodec.INFO_TRY_AGAIN_LATER && inputDone) {
+                    break
+                }
+            }
+
+            codec.stop()
+            codec.release()
+            extractor.release()
+
+            // Convert bytes to ShortArray (little-endian PCM 16-bit)
+            val byteArr = pcmBytes.toByteArray()
+            val shortBuf = ByteBuffer.wrap(byteArr).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+            val shorts = ShortArray(shortBuf.remaining())
+            shortBuf.get(shorts)
+
+            // If stereo, mix down to mono
+            if (channelCount == 2) {
+                val mono = ShortArray(shorts.size / 2)
+                for (i in mono.indices) {
+                    mono[i] = ((shorts[i * 2].toInt() + shorts[i * 2 + 1].toInt()) / 2).toShort()
+                }
+                helicopterPcm = mono
+            } else {
+                helicopterPcm = shorts
+            }
+        } catch (_: Exception) { }
+    }
+
+    /** Start looping the helicopter sound (gapless). */
+    fun startHelicopterLoop(volume: Float = 0.25f) {
+        if (!soundEnabled) return
+        val pcm = helicopterPcm ?: return
+        if (helicopterLooping) return
+        helicopterLooping = true
+
+        // Apply volume to a copy of the buffer
+        val scaled = ShortArray(pcm.size) { i ->
+            (pcm[i] * volume).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+
+        val minBuf = AudioTrack.getMinBufferSize(
+            helicopterSampleRate,
+            AudioFormat.CHANNEL_OUT_MONO,
+            AudioFormat.ENCODING_PCM_16BIT
+        )
+        val track = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_GAME)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setSampleRate(helicopterSampleRate)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .build()
+            )
+            .setBufferSizeInBytes(maxOf(minBuf, scaled.size * 2))
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .build()
+
+        helicopterTrack = track
+        track.play()
+
+        helicopterThread = Thread({
+            try {
+                while (helicopterLooping) {
+                    val written = track.write(scaled, 0, scaled.size)
+                    if (written < 0) break
+                }
+            } catch (_: Exception) { }
+        }, "HelicopterLoop").apply { isDaemon = true; start() }
+    }
+
+    /** Stop the helicopter loop. */
+    fun stopHelicopterLoop() {
+        helicopterLooping = false
+        try {
+            helicopterThread?.join(500)
+            helicopterTrack?.stop()
+            helicopterTrack?.release()
+        } catch (_: Exception) { }
+        helicopterTrack = null
+        helicopterThread = null
+    }
+
     fun release() {
+        stopHelicopterLoop()
         executor?.shutdownNow()
         executor = null
     }

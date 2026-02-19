@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
-import android.media.MediaPlayer
 import android.view.MotionEvent
 import androidx.core.content.ContextCompat
 import com.airbnb.lottie.LottieCompositionFactory
@@ -21,6 +20,7 @@ import com.example.airescape.input.ButtonController
 import com.example.airescape.input.InputManager
 import com.example.airescape.input.JoystickController
 import com.example.airescape.input.TouchController
+import com.example.airescape.ads.AdManager
 import com.example.airescape.util.Vector2
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -57,9 +57,7 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
     // ── Lottie blast ──────────────────────────────────────────────────
     private var blastLoaded = false
 
-    // ── Helicopter sound (gapless looping with two chained players) ──
-    private var helicopterPlayerA: MediaPlayer? = null
-    private var helicopterPlayerB: MediaPlayer? = null
+    // ── Helicopter sound ──
     private var helicopterActive = false
 
     // ── Sky / cloud colors ───────────────────────────────────────────
@@ -136,6 +134,10 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
     private var isNewHighScore = false
     private val GAME_OVER_BLAST_DURATION = 0.8f
 
+    private val watchAdButtonRect = RectF()
+    private var adRewardGiven = false
+    private var interstitialTriggered = false
+
     private val retryButtonRect = RectF()
     private val menuButtonRect = RectF()
 
@@ -178,6 +180,7 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
     // ── Screen interface ─────────────────────────────────────────────
 
     override fun onEnter() {
+        AdManager.hideBanner()
         initGame()
         if (!showGameOver) {
             startHelicopterSound()
@@ -218,6 +221,14 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
                     scoreSubmitted = true
                     isNewHighScore = entityManager.score > GameData.highScore
                     GameData.submitScore(entityManager.score, entityManager.starsCollected)
+                }
+                // Interstitial ad every 3rd game over
+                if (!interstitialTriggered) {
+                    interstitialTriggered = true
+                    AdManager.gameOverCount++
+                    if (AdManager.gameOverCount % 3 == 0) {
+                        surfaceView.post { AdManager.showInterstitial() }
+                    }
                 }
             }
         }
@@ -262,6 +273,17 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
             if (event.action == MotionEvent.ACTION_DOWN) {
                 val x = event.x
                 val y = event.y
+                if (watchAdButtonRect.contains(x, y) && AdManager.isRewardedReady() && !adRewardGiven) {
+                    surfaceView.post {
+                        AdManager.showRewarded(
+                            onRewarded = {
+                                adRewardGiven = true
+                                GameData.totalStars += 20
+                            }
+                        )
+                    }
+                    return true
+                }
                 if (retryButtonRect.contains(x, y)) {
                     surfaceView.setScreen(GameScreen(surfaceView))
                     return true
@@ -310,6 +332,7 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
             planeBitmap = loadPlaneBitmap()
         }
         entityManager.player.planeBitmap = planeBitmap
+        entityManager.player.bitmapRotationOffset = planeConfig.rotationOffset
 
         // Load bullet bitmap
         if (bulletBitmap == null) {
@@ -425,87 +448,39 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         val btnH = screenHeight * 0.055f
         val gap = screenHeight * 0.018f
 
-        val retryTop = screenHeight * 0.70f
-        retryButtonRect.set(cx - btnW / 2f, retryTop, cx + btnW / 2f, retryTop + btnH)
+        val showWatchAd = AdManager.isRewardedReady() && !adRewardGiven
+        var nextTop = screenHeight * 0.68f
 
-        val menuTop = retryTop + btnH + gap
-        menuButtonRect.set(cx - btnW / 2f, menuTop, cx + btnW / 2f, menuTop + btnH)
+        // Watch Ad button (gold) - only if rewarded ad available and not yet claimed
+        if (showWatchAd) {
+            watchAdButtonRect.set(cx - btnW / 2f, nextTop, cx + btnW / 2f, nextTop + btnH)
+            Renderer.drawButton(canvas, watchAdButtonRect, "WATCH AD  +20 \u2605",
+                color = 0xFFFFD600, textColor = 0xFF1A1A2E)
+            nextTop += btnH + gap
+        }
 
         // Retry button (green)
+        retryButtonRect.set(cx - btnW / 2f, nextTop, cx + btnW / 2f, nextTop + btnH)
         Renderer.drawButton(canvas, retryButtonRect, "RETRY", color = 0xFF00E676, textColor = 0xFF1A1A2E)
 
-        // Menu button (gray)
-        Renderer.drawButton(canvas, menuButtonRect, "MENU", color = 0xFF78909C, textColor = 0xFFFFFFFF)
-    }
+        nextTop += btnH + gap
 
-    private fun createHelicopterPlayer(): MediaPlayer? {
-        return MediaPlayer.create(surfaceView.context, R.raw.helicopter)?.apply {
-            setVolume(0.25f, 0.25f)
-        }
+        // Menu button (gray)
+        menuButtonRect.set(cx - btnW / 2f, nextTop, cx + btnW / 2f, nextTop + btnH)
+        Renderer.drawButton(canvas, menuButtonRect, "MENU", color = 0xFF78909C, textColor = 0xFFFFFFFF)
     }
 
     private fun startHelicopterSound() {
         if (!GameData.soundEnabled) return
-        surfaceView.post {
-            try {
-                helicopterActive = true
-                val a = createHelicopterPlayer() ?: return@post
-                val b = createHelicopterPlayer() ?: run { a.release(); return@post }
-                helicopterPlayerA = a
-                helicopterPlayerB = b
-
-                // Chain A -> B for gapless transition
-                a.setNextMediaPlayer(b)
-
-                // When A finishes, reset it and chain B -> A
-                a.setOnCompletionListener {
-                    if (!helicopterActive) return@setOnCompletionListener
-                    try {
-                        it.reset()
-                        val afd = surfaceView.context.resources.openRawResourceFd(R.raw.helicopter)
-                        it.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-                        afd.close()
-                        it.prepare()
-                        it.setVolume(0.25f, 0.25f)
-                        b.setNextMediaPlayer(it)
-                    } catch (_: Exception) { }
-                }
-
-                // When B finishes, reset it and chain A -> B
-                b.setOnCompletionListener {
-                    if (!helicopterActive) return@setOnCompletionListener
-                    try {
-                        it.reset()
-                        val afd = surfaceView.context.resources.openRawResourceFd(R.raw.helicopter)
-                        it.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-                        afd.close()
-                        it.prepare()
-                        it.setVolume(0.25f, 0.25f)
-                        a.setNextMediaPlayer(it)
-                    } catch (_: Exception) { }
-                }
-
-                a.start()
-            } catch (_: Exception) { }
-        }
+        helicopterActive = true
+        // Decode on first use (cached after that)
+        SoundManager.decodeHelicopterSound(surfaceView.context, R.raw.helicopter)
+        SoundManager.startHelicopterLoop()
     }
 
     private fun stopHelicopterSound() {
-        surfaceView.post {
-            helicopterActive = false
-            try {
-                helicopterPlayerA?.setOnCompletionListener(null)
-                helicopterPlayerA?.stop()
-                helicopterPlayerA?.release()
-            } catch (_: Exception) { }
-            try {
-                helicopterPlayerB?.setOnCompletionListener(null)
-                helicopterPlayerB?.stop()
-                helicopterPlayerB?.release()
-            } catch (_: Exception) { }
-            helicopterPlayerA = null
-            helicopterPlayerB = null
-        }
+        helicopterActive = false
+        SoundManager.stopHelicopterLoop()
     }
 
     // ── Edge arrows for off-screen collectibles ─────────────────────

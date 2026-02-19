@@ -45,10 +45,8 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
     }
 
     fun resume() {
-        // Loop is started in surfaceCreated; nothing extra needed here
-        // unless the surface already exists.
-        if (gameLoop == null || !gameLoop!!.running) {
-            // Surface may not be ready yet; surfaceCreated will handle it.
+        if ((gameLoop == null || !gameLoop!!.running) && holder.surface.isValid) {
+            gameLoop = GameLoop(this).also { it.startLoop() }
         }
     }
 

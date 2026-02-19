@@ -26,6 +26,8 @@ class Player : Entity(
     var planeColor: Int = Constants.PLAYER_DEFAULT_COLOR.toInt()
     /** When set, the bitmap is drawn instead of the programmatic plane shape. */
     var planeBitmap: Bitmap? = null
+    /** Rotation offset (degrees) so the bitmap nose aligns with movement direction. */
+    var bitmapRotationOffset: Float = 90f
 
     /** Angle the plane is facing (radians, 0 = right). Starts pointing UP. */
     var angle: Float = (-PI / 2.0).toFloat()
@@ -223,8 +225,7 @@ class Player : Entity(
         if (bmp != null) {
             canvas.save()
             canvas.translate(position.x, position.y)
-            // Bitmap faces upper-right (~-45°); offset +45 aligns it with movement direction.
-            canvas.rotate(Math.toDegrees(angle.toDouble()).toFloat() + 45f)
+            canvas.rotate(Math.toDegrees(angle.toDouble()).toFloat() + bitmapRotationOffset)
             val halfW = bmp.width / 2f
             val halfH = bmp.height / 2f
             canvas.drawBitmap(bmp, -halfW, -halfH, null)

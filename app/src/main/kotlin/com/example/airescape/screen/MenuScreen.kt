@@ -4,6 +4,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import android.view.MotionEvent
+import com.example.airescape.ads.AdManager
 import com.example.airescape.data.Constants
 import com.example.airescape.data.GameData
 import com.example.airescape.engine.GameSurfaceView
@@ -143,6 +144,14 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
     }
 
     // ── Screen interface ─────────────────────────────────────────────
+
+    override fun onEnter() {
+        AdManager.showBanner()
+    }
+
+    override fun onExit() {
+        AdManager.hideBanner()
+    }
 
     override fun update(dt: Float) {
         if (!layoutDone) layoutIfNeeded()
