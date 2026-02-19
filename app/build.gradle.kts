@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.airescape"
+    namespace = "com.royals.airescape"
     compileSdk = 35
 
     compileOptions {
@@ -16,8 +16,12 @@ android {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
-        applicationId = "com.example.airescape"
+        applicationId = "com.royals.airescape"
         minSdk = 24
         targetSdk = 35
         versionCode = 1
@@ -25,8 +29,25 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Google test Ad IDs — safe for development
+            manifestPlaceholders["admobAppId"] = "ca-app-pub-3940256099942544~3347511713"
+            buildConfigField("String", "BANNER_ID", "\"ca-app-pub-3940256099942544/6300978111\"")
+            buildConfigField("String", "INTERSTITIAL_ID", "\"ca-app-pub-3940256099942544/1033173712\"")
+            buildConfigField("String", "REWARDED_ID", "\"ca-app-pub-3940256099942544/5224354917\"")
+        }
         release {
-            isMinifyEnabled = false
+            // Real Ad IDs — production only
+            manifestPlaceholders["admobAppId"] = "ca-app-pub-1811294933992844~3548299390"
+            buildConfigField("String", "BANNER_ID", "\"ca-app-pub-1811294933992844/4294404854\"")
+            buildConfigField("String", "INTERSTITIAL_ID", "\"ca-app-pub-1811294933992844/5460581637\"")
+            buildConfigField("String", "REWARDED_ID", "\"ca-app-pub-1811294933992844/9946186782\"")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             signingConfig = signingConfigs.getByName("debug")
         }
     }
