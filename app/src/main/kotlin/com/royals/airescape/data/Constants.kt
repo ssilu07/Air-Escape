@@ -27,22 +27,27 @@ object Constants {
     const val POWERUP_SPAWN_INTERVAL = 15.0f // seconds
     const val POWERUP_RADIUS = 18f
 
-    // Shield
-    const val SHIELD_DURATION = 5.0f         // seconds
+    // Shield – no timer; lasts until a missile hit deactivates it
 
     // Speed boost
-    const val SPEED_BOOST_DURATION = 4.0f    // seconds
+    const val SPEED_BOOST_DURATION = 15.0f   // seconds
     const val SPEED_BOOST_MULTIPLIER = 1.8f
 
     // Slow motion (slows all missiles)
-    const val SLOW_MOTION_DURATION = 5.0f    // seconds
+    const val SLOW_MOTION_DURATION = 15.0f   // seconds
     const val SLOW_MOTION_MULTIPLIER = 0.3f  // missiles at 30% speed
 
     // Missile jammer (freezes all missiles)
-    const val MISSILE_JAMMER_DURATION = 3.0f // seconds
+    const val MISSILE_JAMMER_DURATION = 15.0f // seconds
 
     // Double score
-    const val DOUBLE_SCORE_DURATION = 8.0f   // seconds
+    const val DOUBLE_SCORE_DURATION = 15.0f  // seconds
+
+    // Bullet shoot (player fires green bullets at missiles)
+    const val BULLET_SHOOT_DURATION = 15.0f  // seconds
+    const val PLAYER_BULLET_SPEED = 900f     // px/s
+    const val PLAYER_BULLET_FIRE_RATE = 0.3f // seconds between shots
+    const val PLAYER_BULLET_RADIUS = 10f
 
     // Hard mode
     const val HARD_MODE_SPAWN_MULTIPLIER = 1.6f     // missiles spawn 60% faster
@@ -63,6 +68,7 @@ object Constants {
     const val SLOW_MOTION_COLOR = 0xFF7C4DFF // purple
     const val MISSILE_JAMMER_COLOR = 0xFFE040FB // magenta/pink
     const val DOUBLE_SCORE_COLOR = 0xFFFFD740 // amber/gold
+    const val BULLET_SHOOT_COLOR = 0xFF00E676 // green
     const val MISSILE_COLOR = 0xFFFF1744     // red
     const val PLAYER_DEFAULT_COLOR = 0xFF00E676 // green
 }

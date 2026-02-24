@@ -16,7 +16,8 @@ enum class PowerUpType {
     SPEED_BOOST,
     SLOW_MOTION,
     MISSILE_JAMMER,
-    DOUBLE_SCORE
+    DOUBLE_SCORE,
+    BULLET_SHOOT
 }
 
 /**
@@ -58,11 +59,7 @@ class PowerUp(
 
     override fun update(dt: Float) {
         pulseTimer += dt
-        lifetime -= dt
-
-        if (lifetime <= 0f) {
-            alive = false
-        }
+        // Power-ups stay forever until collected — no despawn
     }
 
     // ── Render ─────────────────────────────────────────────────────
@@ -71,11 +68,7 @@ class PowerUp(
         val pulse = 1f + 0.15f * sin(pulseTimer * 5f)
         val drawRadius = radius * pulse
 
-        // Flicker when about to despawn (last 3 seconds)
-        if (lifetime < 3f) {
-            val flicker = sin(pulseTimer * 20f)
-            if (flicker < 0f) return // skip draw to create blinking
-        }
+        // No flicker — power-ups stay permanently until collected
 
         val color: Int
         val iconText: String
@@ -100,6 +93,10 @@ class PowerUp(
             PowerUpType.DOUBLE_SCORE -> {
                 color = Constants.DOUBLE_SCORE_COLOR.toInt()
                 iconText = "2X"
+            }
+            PowerUpType.BULLET_SHOOT -> {
+                color = Constants.BULLET_SHOOT_COLOR.toInt()
+                iconText = "\uD83D\uDD2B" // gun emoji
             }
         }
 

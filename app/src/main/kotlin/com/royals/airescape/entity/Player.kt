@@ -65,6 +65,15 @@ class Player : Entity(
     var doubleScoreTimer: Float = 0f
         private set
 
+    // ── Bullet shoot (player fires bullets at missiles) ────────
+    var bulletShootActive: Boolean = false
+        private set
+    var bulletShootTimer: Float = 0f
+        private set
+    var bulletFireAccumulator: Float = 0f
+    /** Plane has a permanent built-in gun (e.g. Jet, Rafale). */
+    var hasBuiltInGun: Boolean = false
+
     // ── Trail particles ────────────────────────────────────────────
     data class TrailParticle(
         var position: Vector2,
@@ -92,7 +101,6 @@ class Player : Entity(
 
     fun activateShield() {
         shieldActive = true
-        shieldTimer = Constants.SHIELD_DURATION
     }
 
     fun activateSpeedBoost() {
@@ -120,6 +128,12 @@ class Player : Entity(
         doubleScoreTimer = Constants.DOUBLE_SCORE_DURATION
     }
 
+    fun activateBulletShoot() {
+        bulletShootActive = true
+        bulletShootTimer = Constants.BULLET_SHOOT_DURATION
+        bulletFireAccumulator = 0f
+    }
+
     // ── Update ─────────────────────────────────────────────────────
 
     override fun update(dt: Float) {
@@ -141,14 +155,7 @@ class Player : Entity(
         position = position + velocity * dt
         // No screen clamping — world is infinite, camera follows
 
-        // Shield timer
-        if (shieldActive) {
-            shieldTimer -= dt
-            if (shieldTimer <= 0f) {
-                shieldActive = false
-                shieldTimer = 0f
-            }
-        }
+        // Shield has no timer – it stays until a missile hit deactivates it
 
         // Speed boost timer
         if (speedBoostActive) {
@@ -184,6 +191,19 @@ class Player : Entity(
                 doubleScoreActive = false
                 doubleScoreTimer = 0f
             }
+        }
+
+        // Bullet shoot timer
+        if (bulletShootActive) {
+            bulletShootTimer -= dt
+            if (bulletShootTimer <= 0f) {
+                bulletShootActive = false
+                bulletShootTimer = 0f
+            }
+        }
+        // Fire accumulator ticks when power-up active OR plane has built-in gun
+        if (bulletShootActive || hasBuiltInGun) {
+            bulletFireAccumulator += dt
         }
 
         // Trail particle spawning (always — plane is always moving)

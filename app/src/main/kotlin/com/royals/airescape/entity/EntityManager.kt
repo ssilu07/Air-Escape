@@ -23,11 +23,15 @@ class EntityManager {
     val missiles: MutableList<Missile> = mutableListOf()
     val stars: MutableList<Star> = mutableListOf()
     val powerUps: MutableList<PowerUp> = mutableListOf()
+    val playerBullets: MutableList<PlayerBullet> = mutableListOf()
     val explosions: MutableList<Explosion> = mutableListOf()
     val lottieBlasts: MutableList<LottieBlast> = mutableListOf()
 
     /** Bullet bitmap to apply to spawned missiles. */
     var bulletBitmap: Bitmap? = null
+
+    /** Green bullet bitmap for player bullets. */
+    var bulletGreenBitmap: Bitmap? = null
 
     // ── Camera (top-left corner of the viewport in world space) ───
     var cameraX: Float = 0f
@@ -81,6 +85,7 @@ class EntityManager {
         missiles.clear()
         stars.clear()
         powerUps.clear()
+        playerBullets.clear()
         explosions.clear()
         lottieBlasts.clear()
 
@@ -153,6 +158,15 @@ class EntityManager {
             spawnPowerUp()
         }
 
+        // ---- Player bullet auto-fire -----------------------------------
+        if ((player.bulletShootActive || player.hasBuiltInGun) && player.bulletFireAccumulator >= Constants.PLAYER_BULLET_FIRE_RATE) {
+            player.bulletFireAccumulator -= Constants.PLAYER_BULLET_FIRE_RATE
+            val bullet = PlayerBullet(player.position, player.angle)
+            bullet.bulletBitmap = bulletGreenBitmap
+            playerBullets.add(bullet)
+            SoundManager.playBulletFire()
+        }
+
         // ---- Entity updates ------------------------------------------
 
         player.update(dt)
@@ -172,6 +186,7 @@ class EntityManager {
                 missile.update(dt)
             }
         }
+        for (playerBullet in playerBullets) playerBullet.update(dt)
         for (star in stars) star.update(dt)
         for (powerUp in powerUps) powerUp.update(dt)
         for (explosion in explosions) explosion.update(dt)
@@ -181,6 +196,7 @@ class EntityManager {
 
         checkMissilePlayerCollisions()
         checkMissileMissileCollisions()
+        checkPlayerBulletMissileCollisions()
         checkPlayerStarCollisions()
         checkPlayerPowerUpCollisions()
 
@@ -193,6 +209,15 @@ class EntityManager {
                 m.position.x > cameraX + screenWidth + missileMargin ||
                 m.position.y < cameraY - missileMargin ||
                 m.position.y > cameraY + screenHeight + missileMargin
+            )
+        }
+
+        playerBullets.removeAll { b ->
+            !b.alive || (
+                b.position.x < cameraX - missileMargin ||
+                b.position.x > cameraX + screenWidth + missileMargin ||
+                b.position.y < cameraY - missileMargin ||
+                b.position.y > cameraY + screenHeight + missileMargin
             )
         }
 
@@ -230,9 +255,10 @@ class EntityManager {
     // ── Render ─────────────────────────────────────────────────────
 
     fun render(canvas: Canvas) {
-        // Render order: stars -> power-ups -> missiles -> player -> explosions
+        // Render order: stars -> power-ups -> player bullets -> missiles -> player -> explosions
         for (star in stars) star.render(canvas)
         for (powerUp in powerUps) powerUp.render(canvas)
+        for (playerBullet in playerBullets) playerBullet.render(canvas)
         for (missile in missiles) missile.render(canvas)
         player.render(canvas)
         for (explosion in explosions) explosion.render(canvas)
@@ -295,6 +321,28 @@ class EntityManager {
         }
     }
 
+    private fun checkPlayerBulletMissileCollisions() {
+        for (bullet in playerBullets) {
+            if (!bullet.alive) continue
+            for (missile in missiles) {
+                if (!missile.alive) continue
+                if (CollisionUtil.circleCircle(
+                        bullet.position, bullet.radius,
+                        missile.position, missile.radius
+                    )
+                ) {
+                    bullet.alive = false
+                    missile.alive = false
+                    explosions.add(Explosion(missile.position, Constants.BULLET_SHOOT_COLOR.toInt()))
+                    lottieBlasts.add(LottieBlast(missile.position, size = 300f))
+                    score += if (player.doubleScoreActive) 50 else 25
+                    SoundManager.playMissileCollide()
+                    break // this bullet is done
+                }
+            }
+        }
+    }
+
     private fun checkPlayerStarCollisions() {
         val iter = stars.iterator()
         while (iter.hasNext()) {
@@ -332,6 +380,7 @@ class EntityManager {
                     PowerUpType.SLOW_MOTION -> player.activateSlowMotion()
                     PowerUpType.MISSILE_JAMMER -> player.activateMissileJammer()
                     PowerUpType.DOUBLE_SCORE -> player.activateDoubleScore()
+                    PowerUpType.BULLET_SHOOT -> player.activateBulletShoot()
                 }
                 SoundManager.playPowerUp()
             }

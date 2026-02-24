@@ -51,8 +51,9 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
     // ── Plane bitmap ─────────────────────────────────────────────────
     private var planeBitmap: Bitmap? = null
 
-    // ── Bullet bitmap ─────────────────────────────────────────────────
+    // ── Bullet bitmaps ─────────────────────────────────────────────────
     private var bulletBitmap: Bitmap? = null
+    private var bulletGreenBitmap: Bitmap? = null
 
     // ── Lottie blast ──────────────────────────────────────────────────
     private var blastLoaded = false
@@ -118,6 +119,11 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         style = Paint.Style.FILL
     }
 
+    private val bulletShootBarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Constants.BULLET_SHOOT_COLOR.toInt()
+        style = Paint.Style.FILL
+    }
+
     private val barRect = RectF()
 
     // ── Edge arrow paints ─────────────────────────────────────────────
@@ -125,6 +131,17 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         style = Paint.Style.FILL
     }
     private val arrowPath = android.graphics.Path()
+
+    // ── Pause ─────────────────────────────────────────────────────────
+    private var paused = false
+    private val pauseButtonRect = RectF()
+    private val pauseResumeRect = RectF()
+    private val pauseMenuRect = RectF()
+
+    private val pauseIconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFFFFFFF.toInt()
+        style = Paint.Style.FILL
+    }
 
     // ── Game-over overlay ───────────────────────────────────────────
     private var showGameOver = false
@@ -183,11 +200,13 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         AdManager.hideBanner()
         initGame()
         if (!showGameOver) {
+            SoundManager.gameActive = true
             startHelicopterSound()
         }
     }
 
     override fun onExit() {
+        SoundManager.gameActive = false
         stopHelicopterSound()
     }
 
@@ -207,6 +226,8 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
             loadBlastComposition()
         }
 
+        if (paused) return
+
         val dir = inputManager.getDirection()
         entityManager.player.inputDirection = dir
 
@@ -216,6 +237,7 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
             gameOverDelay += dt
             if (gameOverDelay >= GAME_OVER_BLAST_DURATION) {
                 showGameOver = true
+                SoundManager.gameActive = false
                 stopHelicopterSound()
                 if (!scoreSubmitted) {
                     scoreSubmitted = true
@@ -257,10 +279,12 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
             renderEdgeArrows(canvas)
 
             // Input overlay (screen-space)
-            inputManager.render(canvas)
+            if (!paused) inputManager.render(canvas)
 
             // HUD (screen-space)
             renderHud(canvas)
+
+            if (paused) renderPauseOverlay(canvas)
         } else {
             // Game-over overlay on top of gameplay
             renderGameOverOverlay(canvas)
@@ -269,6 +293,23 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!layoutDone) return true
+        if (paused) {
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                val x = event.x
+                val y = event.y
+                if (pauseResumeRect.contains(x, y)) {
+                    paused = false
+                    SoundManager.gameActive = true
+                    startHelicopterSound()
+                    return true
+                }
+                if (pauseMenuRect.contains(x, y)) {
+                    surfaceView.setScreen(MenuScreen(surfaceView))
+                    return true
+                }
+            }
+            return true
+        }
         if (showGameOver) {
             if (event.action == MotionEvent.ACTION_DOWN) {
                 val x = event.x
@@ -293,6 +334,13 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
                     return true
                 }
             }
+            return true
+        }
+        // Pause button tap
+        if (event.action == MotionEvent.ACTION_DOWN && pauseButtonRect.contains(event.x, event.y)) {
+            paused = true
+            SoundManager.gameActive = false
+            stopHelicopterSound()
             return true
         }
         return inputManager.onTouchEvent(event)
@@ -333,12 +381,17 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         }
         entityManager.player.planeBitmap = planeBitmap
         entityManager.player.bitmapRotationOffset = planeConfig.rotationOffset
+        entityManager.player.hasBuiltInGun = planeConfig.hasGun
 
-        // Load bullet bitmap
+        // Load bullet bitmaps
         if (bulletBitmap == null) {
-            bulletBitmap = loadBulletBitmap()
+            bulletBitmap = loadBulletBitmap(R.drawable.bullet_red)
         }
         entityManager.bulletBitmap = bulletBitmap
+        if (bulletGreenBitmap == null) {
+            bulletGreenBitmap = loadBulletBitmap(R.drawable.bullet_green)
+        }
+        entityManager.bulletGreenBitmap = bulletGreenBitmap
 
         // Load Lottie blast composition
         if (!blastLoaded) {
@@ -370,9 +423,9 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         }
     }
 
-    private fun loadBulletBitmap(): Bitmap? {
+    private fun loadBulletBitmap(drawableRes: Int = R.drawable.bullet_red): Bitmap? {
         return try {
-            val drawable = ContextCompat.getDrawable(surfaceView.context, R.drawable.bullet_red)
+            val drawable = ContextCompat.getDrawable(surfaceView.context, drawableRes)
                 ?: return null
             val size = (Constants.MISSILE_RADIUS * 4f).toInt()
             val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
@@ -510,6 +563,7 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
                 com.royals.airescape.entity.PowerUpType.SLOW_MOTION -> Constants.SLOW_MOTION_COLOR.toInt()
                 com.royals.airescape.entity.PowerUpType.MISSILE_JAMMER -> Constants.MISSILE_JAMMER_COLOR.toInt()
                 com.royals.airescape.entity.PowerUpType.DOUBLE_SCORE -> Constants.DOUBLE_SCORE_COLOR.toInt()
+                com.royals.airescape.entity.PowerUpType.BULLET_SHOOT -> Constants.BULLET_SHOOT_COLOR.toInt()
             }
             drawEdgeArrow(canvas, sx, sy, margin, arrowSize, color, 200)
         }
@@ -629,6 +683,26 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         timePaint.textSize = smallTextSize
         canvas.drawText(timeStr, padding, padding + smallTextSize, timePaint)
 
+        // Pause button (top-left, below time)
+        val pauseSize = hudTextSize * 1.2f
+        val pauseX = padding
+        val pauseY = padding + smallTextSize + padding * 0.5f
+        pauseButtonRect.set(pauseX, pauseY, pauseX + pauseSize, pauseY + pauseSize)
+        // Draw pause icon (two vertical bars)
+        val barW = pauseSize * 0.25f
+        val barH = pauseSize * 0.7f
+        val barTop = pauseY + (pauseSize - barH) / 2f
+        pauseIconPaint.color = 0xFFFFFFFF.toInt()
+        pauseIconPaint.alpha = 200
+        canvas.drawRoundRect(
+            RectF(pauseX + pauseSize * 0.15f, barTop, pauseX + pauseSize * 0.15f + barW, barTop + barH),
+            3f, 3f, pauseIconPaint
+        )
+        canvas.drawRoundRect(
+            RectF(pauseX + pauseSize * 0.6f, barTop, pauseX + pauseSize * 0.6f + barW, barTop + barH),
+            3f, 3f, pauseIconPaint
+        )
+
         // Power-up timer bars (stacked below score)
         val barWidth = screenWidth * 0.3f
         val barHeight = screenHeight * 0.012f
@@ -643,7 +717,7 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
             barRect.set(barX, barY, barX + barWidth, barY + barHeight)
             canvas.drawRoundRect(barRect, 4f, 4f, barBgPaint)
 
-            val fill = (entityManager.player.shieldTimer / Constants.SHIELD_DURATION).coerceIn(0f, 1f)
+            val fill = 1f // shield has no timer — always full until missile hit
             barRect.set(barX, barY, barX + barWidth * fill, barY + barHeight)
             canvas.drawRoundRect(barRect, 4f, 4f, shieldBarPaint)
 
@@ -738,6 +812,53 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
                 color = Constants.DOUBLE_SCORE_COLOR,
                 align = Paint.Align.CENTER
             )
+            barIndex++
         }
+
+        // Bullet shoot timer bar
+        if (entityManager.player.bulletShootActive) {
+            val barY = padding + hudTextSize * 1.8f + barIndex * barSpacing
+
+            barRect.set(barX, barY, barX + barWidth, barY + barHeight)
+            canvas.drawRoundRect(barRect, 4f, 4f, barBgPaint)
+
+            val fill = (entityManager.player.bulletShootTimer / Constants.BULLET_SHOOT_DURATION).coerceIn(0f, 1f)
+            barRect.set(barX, barY, barX + barWidth * fill, barY + barHeight)
+            canvas.drawRoundRect(barRect, 4f, 4f, bulletShootBarPaint)
+
+            Renderer.drawText(
+                canvas, "BULLET",
+                screenWidth / 2f, barY - 4f,
+                size = smallTextSize * 0.7f,
+                color = Constants.BULLET_SHOOT_COLOR,
+                align = Paint.Align.CENTER
+            )
+        }
+    }
+
+    // ── Pause overlay ─────────────────────────────────────────────────
+
+    private fun renderPauseOverlay(canvas: Canvas) {
+        // Dim background
+        canvas.drawRect(0f, 0f, screenWidth, screenHeight, overlayPaint)
+
+        val cx = screenWidth / 2f
+
+        // "PAUSED" title
+        goTitlePaint.textSize = screenWidth * 0.1f
+        canvas.drawText("PAUSED", cx, screenHeight * 0.38f, goTitlePaint)
+
+        // Buttons
+        val btnW = screenWidth * 0.6f
+        val btnH = screenHeight * 0.06f
+        val gap = screenHeight * 0.02f
+
+        val resumeTop = screenHeight * 0.48f
+        pauseResumeRect.set(cx - btnW / 2f, resumeTop, cx + btnW / 2f, resumeTop + btnH)
+        Renderer.drawButton(canvas, pauseResumeRect, "RESUME", color = 0xFF00E676, textColor = 0xFF1A1A2E)
+
+        val menuTop = resumeTop + btnH + gap
+        pauseMenuRect.set(cx - btnW / 2f, menuTop, cx + btnW / 2f, menuTop + btnH)
+        Renderer.drawButton(canvas, pauseMenuRect, "MENU", color = 0xFF78909C, textColor = 0xFFFFFFFF)
     }
 }

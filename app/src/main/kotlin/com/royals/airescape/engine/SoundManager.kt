@@ -22,6 +22,8 @@ object SoundManager {
 
     private const val SAMPLE_RATE = 22050
     private var soundEnabled = true
+    /** When false, gameplay sound effects are suppressed (game over, ads, etc.). */
+    @Volatile var gameActive = false
     private var executor: ExecutorService? = null
 
     private fun ensureExecutor(): ExecutorService {
@@ -97,6 +99,18 @@ object SoundManager {
         buf2.copyInto(combined, buf1.size)
         buf3.copyInto(combined, buf1.size + buf2.size)
         playBuffer(combined)
+    }
+
+    /** Very short, quiet "pew" for player bullet fire. */
+    fun playBulletFire() = playAsync {
+        generateTone(
+            durationMs = 50,
+            startFreq = 1400f,
+            endFreq = 800f,
+            waveform = Waveform.SINE,
+            volume = 0.15f,
+            fadeOut = true
+        )
     }
 
     fun playMissileCollide() = playAsync {
@@ -278,11 +292,11 @@ object SoundManager {
     private enum class Waveform { SINE, SQUARE }
 
     private fun playAsync(block: () -> Unit) {
-        if (!soundEnabled) return
+        if (!soundEnabled || !gameActive) return
         try {
             ensureExecutor().submit {
                 try {
-                    block()
+                    if (gameActive) block()
                 } catch (_: Exception) {
                     // Swallow audio errors silently
                 }
