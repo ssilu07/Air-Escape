@@ -7,6 +7,15 @@ android {
     namespace = "com.royals.airescape"
     compileSdk = 35
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("D:\\java\\Key\\airescape")
+            storePassword = "8750257510"
+            keyAlias = "key0"
+            keyPassword = "8750257510"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -24,8 +33,8 @@ android {
         applicationId = "com.royals.airescape"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
     }
 
     buildTypes {
@@ -48,7 +57,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }
