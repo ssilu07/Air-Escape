@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.royals.airescape"
-    compileSdk = 35
+    compileSdk = 36
 
     signingConfigs {
         create("release") {
@@ -32,9 +32,9 @@ android {
     defaultConfig {
         applicationId = "com.royals.airescape"
         minSdk = 24
-        targetSdk = 35
-        versionCode = 2
-        versionName = "1.1"
+        targetSdk = 36
+        versionCode = 3
+        versionName = "1.2"
     }
 
     buildTypes {
@@ -67,4 +67,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.airbnb.android:lottie:6.4.0")
     implementation("com.google.android.gms:play-services-ads:23.6.0")
+    implementation("com.google.android.gms:play-services-games-v2:20.1.2")
+    implementation("com.google.android.play:review:2.0.2")
+    implementation("com.google.android.play:review-ktx:2.0.2")
 }

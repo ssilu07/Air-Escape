@@ -9,6 +9,7 @@ import android.view.MotionEvent
 import androidx.core.content.ContextCompat
 import com.royals.airescape.data.Constants
 import com.royals.airescape.data.GameData
+import com.royals.airescape.data.PlaneAbility
 import com.royals.airescape.data.PlaneConfig
 import com.royals.airescape.engine.GameSurfaceView
 import com.royals.airescape.engine.Renderer
@@ -36,6 +37,12 @@ class PlaneSelectScreen(private val surfaceView: GameSurfaceView) : Screen {
     // ── Card regions (indexed by plane id) ───────────────────────────
     private val cardRects = Array(planes.size) { RectF() }
     private val backButtonRect = RectF()
+
+    // ── Scroll state ──────────────────────────────────────────────
+    private var scrollOffset = 0f
+    private var totalContentHeight = 0f
+    private var lastTouchY = 0f
+    private var isDragging = false
 
     // ── Paints ───────────────────────────────────────────────────────
     private val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -93,6 +100,14 @@ class PlaneSelectScreen(private val surfaceView: GameSurfaceView) : Screen {
     /** Cached plane preview bitmaps keyed by drawable resource id. */
     private val planeBitmapCache = mutableMapOf<Int, Bitmap>()
 
+    override fun onExit() {
+        // Recycle cached bitmaps to free GPU/heap memory
+        for (bmp in planeBitmapCache.values) {
+            bmp.recycle()
+        }
+        planeBitmapCache.clear()
+    }
+
     private fun getPlanePreviewBitmap(config: PlaneConfig, size: Int): Bitmap? {
         planeBitmapCache[config.drawableRes]?.let { return it }
         return try {
@@ -111,6 +126,13 @@ class PlaneSelectScreen(private val surfaceView: GameSurfaceView) : Screen {
 
     // ── Layout ───────────────────────────────────────────────────────
 
+    // Cached card dimensions for re-layout on scroll
+    private var cardW = 0f
+    private var cardH = 0f
+    private var cardGap = 0f
+    private var cardTopMargin = 0f
+    private var cardPadding = 0f
+
     private fun layoutIfNeeded() {
         val sw = GameSurfaceView.screenWidth.toFloat()
         val sh = GameSurfaceView.screenHeight.toFloat()
@@ -120,31 +142,35 @@ class PlaneSelectScreen(private val surfaceView: GameSurfaceView) : Screen {
         screenHeight = sh
 
         // Back button (top-left)
-        val padding = sw * 0.04f
+        cardPadding = sw * 0.04f
         val backW = sw * 0.2f
         val backH = sh * 0.035f
-        backButtonRect.set(padding, sh * 0.015f, padding + backW, sh * 0.015f + backH)
+        backButtonRect.set(cardPadding, sh * 0.015f, cardPadding + backW, sh * 0.015f + backH)
 
-        // Card grid below header
+        // Card grid below header (2 columns, rows computed from plane count)
         val cols = 2
-        val rows = 3
-        val topMargin = sh * 0.1f
+        val rows = (planes.size + cols - 1) / cols
+        cardTopMargin = sh * 0.1f
         val bottomMargin = sh * 0.02f
-        val cardAreaWidth = sw - padding * 2f
-        val cardAreaHeight = sh - topMargin - bottomMargin
-        val gap = sw * 0.03f
-        val cardW = (cardAreaWidth - (cols - 1) * gap) / cols
-        val cardH = (cardAreaHeight - (rows - 1) * gap) / rows
+        val cardAreaWidth = sw - cardPadding * 2f
+        cardGap = sw * 0.03f
+        cardW = (cardAreaWidth - (cols - 1) * cardGap) / cols
+        cardH = ((sh - cardTopMargin - bottomMargin) - (rows - 1) * cardGap) / rows
+        totalContentHeight = cardTopMargin + rows * (cardH + cardGap)
 
+        updateCardPositions()
+        layoutDone = true
+    }
+
+    private fun updateCardPositions() {
+        val cols = 2
         for (i in planes.indices) {
             val col = i % cols
             val row = i / cols
-            val x = padding + col * (cardW + gap)
-            val y = topMargin + row * (cardH + gap)
+            val x = cardPadding + col * (cardW + cardGap)
+            val y = cardTopMargin + row * (cardH + cardGap) + scrollOffset
             cardRects[i].set(x, y, x + cardW, y + cardH)
         }
-
-        layoutDone = true
     }
 
     // ── Screen interface ─────────────────────────────────────────────
@@ -201,8 +227,21 @@ class PlaneSelectScreen(private val surfaceView: GameSurfaceView) : Screen {
 
             // Speed modifier
             val speedText = String.format("Speed: %.0f%%", plane.speedModifier * 100)
-            detailPaint.textSize = cardW * 0.11f
-            canvas.drawText(speedText, rect.centerX(), rect.top + cardH * 0.77f, detailPaint)
+            detailPaint.textSize = cardW * 0.10f
+            canvas.drawText(speedText, rect.centerX(), rect.top + cardH * 0.74f, detailPaint)
+
+            // Ability (if any)
+            if (plane.ability != PlaneAbility.NONE) {
+                detailPaint.color = 0xFF80CBC4.toInt()
+                detailPaint.textSize = cardW * 0.09f
+                canvas.drawText(plane.ability.description, rect.centerX(), rect.top + cardH * 0.82f, detailPaint)
+                detailPaint.color = 0xFFBBBBBB.toInt()
+            } else if (plane.hasGun) {
+                detailPaint.color = Constants.BULLET_SHOOT_COLOR.toInt()
+                detailPaint.textSize = cardW * 0.09f
+                canvas.drawText("Built-in gun", rect.centerX(), rect.top + cardH * 0.82f, detailPaint)
+                detailPaint.color = 0xFFBBBBBB.toInt()
+            }
 
             if (!unlocked) {
                 // Locked overlay
@@ -234,32 +273,49 @@ class PlaneSelectScreen(private val surfaceView: GameSurfaceView) : Screen {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_DOWN && layoutDone) {
-            val x = event.x
-            val y = event.y
+        if (!layoutDone) return true
 
-            // Back button
-            if (backButtonRect.contains(x, y)) {
-                surfaceView.setScreen(MenuScreen(surfaceView))
-                return true
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                lastTouchY = event.y
+                isDragging = false
+
+                if (backButtonRect.contains(event.x, event.y)) {
+                    surfaceView.setScreen(MenuScreen(surfaceView))
+                    return true
+                }
             }
-
-            // Plane cards
-            for (i in planes.indices) {
-                if (cardRects[i].contains(x, y)) {
-                    val plane = planes[i]
-                    if (GameData.isPlaneUnlocked(plane.id)) {
-                        // Select this plane
-                        GameData.selectedPlane = plane.id
-                    } else {
-                        // Try to unlock
-                        if (GameData.totalStars >= plane.unlockCost) {
-                            GameData.totalStars = GameData.totalStars - plane.unlockCost
-                            GameData.unlockPlane(plane.id)
-                            GameData.selectedPlane = plane.id
+            MotionEvent.ACTION_MOVE -> {
+                val dy = event.y - lastTouchY
+                if (kotlin.math.abs(dy) > 10f) isDragging = true
+                if (isDragging) {
+                    scrollOffset += dy
+                    // Clamp scroll
+                    val maxScroll = 0f
+                    val minScroll = -(totalContentHeight - screenHeight).coerceAtLeast(0f)
+                    scrollOffset = scrollOffset.coerceIn(minScroll, maxScroll)
+                    lastTouchY = event.y
+                    updateCardPositions()
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                if (!isDragging) {
+                    // It's a tap — check cards
+                    for (i in planes.indices) {
+                        if (cardRects[i].contains(event.x, event.y)) {
+                            val plane = planes[i]
+                            if (GameData.isPlaneUnlocked(plane.id)) {
+                                GameData.selectedPlane = plane.id
+                            } else {
+                                if (GameData.totalStars >= plane.unlockCost) {
+                                    GameData.totalStars = GameData.totalStars - plane.unlockCost
+                                    GameData.unlockPlane(plane.id)
+                                    GameData.selectedPlane = plane.id
+                                }
+                            }
+                            return true
                         }
                     }
-                    return true
                 }
             }
         }

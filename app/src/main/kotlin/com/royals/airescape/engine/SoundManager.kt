@@ -41,100 +41,75 @@ object SoundManager {
 
     fun isSoundEnabled(): Boolean = soundEnabled
 
+    // ---- Cached sound buffers (generated once, reused every play) ----
+
+    private val soundCache = HashMap<String, ShortArray>(8)
+
+    private fun cachedBuffer(key: String, generator: () -> ShortArray): ShortArray {
+        return soundCache.getOrPut(key) { generator() }
+    }
+
     // ---- Public sound methods ----
 
     fun playExplosion() = playAsync {
-        // Low rumble noise burst - descending square wave
-        generateTone(
-            durationMs = 300,
-            startFreq = 220f,
-            endFreq = 55f,
-            waveform = Waveform.SQUARE,
-            volume = 0.7f,
-            fadeOut = true
-        )
+        playBuffer(cachedBuffer("explosion") {
+            generateBuffer(300, 220f, 55f, Waveform.SQUARE, 0.7f, true)
+        })
     }
 
     fun playStarCollect() = playAsync {
-        // Quick ascending ding
-        generateTone(
-            durationMs = 120,
-            startFreq = 880f,
-            endFreq = 1760f,
-            waveform = Waveform.SINE,
-            volume = 0.5f,
-            fadeOut = false
-        )
+        playBuffer(cachedBuffer("star") {
+            generateBuffer(120, 880f, 1760f, Waveform.SINE, 0.5f, false)
+        })
     }
 
     fun playPowerUp() = playAsync {
-        // Rising sparkle - two quick notes
-        val buf1 = generateBuffer(80, 660f, 660f, Waveform.SINE, 0.5f, false)
-        val buf2 = generateBuffer(140, 990f, 1320f, Waveform.SINE, 0.5f, true)
-        val combined = ShortArray(buf1.size + buf2.size)
-        buf1.copyInto(combined, 0)
-        buf2.copyInto(combined, buf1.size)
-        playBuffer(combined)
+        playBuffer(cachedBuffer("powerup") {
+            val buf1 = generateBuffer(80, 660f, 660f, Waveform.SINE, 0.5f, false)
+            val buf2 = generateBuffer(140, 990f, 1320f, Waveform.SINE, 0.5f, true)
+            val combined = ShortArray(buf1.size + buf2.size)
+            buf1.copyInto(combined, 0)
+            buf2.copyInto(combined, buf1.size)
+            combined
+        })
     }
 
     fun playShieldHit() = playAsync {
-        // Metallic ping
-        generateTone(
-            durationMs = 180,
-            startFreq = 1200f,
-            endFreq = 600f,
-            waveform = Waveform.SINE,
-            volume = 0.6f,
-            fadeOut = true
-        )
+        playBuffer(cachedBuffer("shield") {
+            generateBuffer(180, 1200f, 600f, Waveform.SINE, 0.6f, true)
+        })
     }
 
     fun playGameOver() = playAsync {
-        // Sad descending tones
-        val buf1 = generateBuffer(200, 440f, 440f, Waveform.SQUARE, 0.5f, false)
-        val buf2 = generateBuffer(200, 350f, 350f, Waveform.SQUARE, 0.5f, false)
-        val buf3 = generateBuffer(400, 260f, 130f, Waveform.SQUARE, 0.5f, true)
-        val combined = ShortArray(buf1.size + buf2.size + buf3.size)
-        buf1.copyInto(combined, 0)
-        buf2.copyInto(combined, buf1.size)
-        buf3.copyInto(combined, buf1.size + buf2.size)
-        playBuffer(combined)
+        playBuffer(cachedBuffer("gameover") {
+            val buf1 = generateBuffer(200, 440f, 440f, Waveform.SQUARE, 0.5f, false)
+            val buf2 = generateBuffer(200, 350f, 350f, Waveform.SQUARE, 0.5f, false)
+            val buf3 = generateBuffer(400, 260f, 130f, Waveform.SQUARE, 0.5f, true)
+            val combined = ShortArray(buf1.size + buf2.size + buf3.size)
+            buf1.copyInto(combined, 0)
+            buf2.copyInto(combined, buf1.size)
+            buf3.copyInto(combined, buf1.size + buf2.size)
+            combined
+        })
     }
 
     /** Very short, quiet "pew" for player bullet fire. */
     fun playBulletFire() = playAsync {
-        generateTone(
-            durationMs = 50,
-            startFreq = 1400f,
-            endFreq = 800f,
-            waveform = Waveform.SINE,
-            volume = 0.15f,
-            fadeOut = true
-        )
+        playBuffer(cachedBuffer("bullet") {
+            generateBuffer(50, 1400f, 800f, Waveform.SINE, 0.15f, true)
+        })
     }
 
     fun playMissileCollide() = playAsync {
-        // Short mid-frequency burst for missile-missile collision
-        generateTone(
-            durationMs = 200,
-            startFreq = 300f,
-            endFreq = 100f,
-            waveform = Waveform.SQUARE,
-            volume = 0.5f,
-            fadeOut = true
-        )
+        playBuffer(cachedBuffer("collide") {
+            generateBuffer(200, 300f, 100f, Waveform.SQUARE, 0.5f, true)
+        })
     }
 
     fun playBackgroundHum() = playAsync {
-        // Very low, quiet sine hum (short burst; caller can loop)
-        generateTone(
-            durationMs = 500,
-            startFreq = 60f,
-            endFreq = 60f,
-            waveform = Waveform.SINE,
-            volume = 0.08f,
-            fadeOut = false
-        )
+        playBuffer(cachedBuffer("hum") {
+            generateBuffer(500, 60f, 60f, Waveform.SINE, 0.08f, false)
+        })
     }
 
     // ---- Helicopter continuous loop (AudioTrack streaming, truly gapless) ----
@@ -262,7 +237,8 @@ object SoundManager {
         helicopterThread = Thread({
             try {
                 while (helicopterLooping) {
-                    val written = track.write(scaled, 0, scaled.size)
+                    val t = helicopterTrack ?: break
+                    val written = t.write(scaled, 0, scaled.size)
                     if (written < 0) break
                 }
             } catch (_: Exception) { }
@@ -272,19 +248,26 @@ object SoundManager {
     /** Stop the helicopter loop. */
     fun stopHelicopterLoop() {
         helicopterLooping = false
-        try {
-            helicopterThread?.join(500)
-            helicopterTrack?.stop()
-            helicopterTrack?.release()
-        } catch (_: Exception) { }
-        helicopterTrack = null
+        val thread = helicopterThread
         helicopterThread = null
+        try {
+            // Wait for the streaming thread to exit before touching the track
+            thread?.join(1000)
+        } catch (_: Exception) { }
+        // Now that the thread is done, safely stop and release
+        val track = helicopterTrack
+        helicopterTrack = null
+        try {
+            track?.stop()
+            track?.release()
+        } catch (_: Exception) { }
     }
 
     fun release() {
         stopHelicopterLoop()
         executor?.shutdownNow()
         executor = null
+        soundCache.clear()
     }
 
     // ---- Internal helpers ----
@@ -304,18 +287,6 @@ object SoundManager {
         } catch (_: Exception) {
             // Executor may be shut down
         }
-    }
-
-    private fun generateTone(
-        durationMs: Int,
-        startFreq: Float,
-        endFreq: Float,
-        waveform: Waveform,
-        volume: Float,
-        fadeOut: Boolean
-    ) {
-        val buffer = generateBuffer(durationMs, startFreq, endFreq, waveform, volume, fadeOut)
-        playBuffer(buffer)
     }
 
     private fun generateBuffer(

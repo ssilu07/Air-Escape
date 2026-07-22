@@ -12,8 +12,11 @@ import com.royals.airescape.data.Constants
 import com.royals.airescape.data.GameData
 import com.royals.airescape.data.PlaneConfig
 import com.royals.airescape.engine.GameSurfaceView
+import com.royals.airescape.engine.PlayGamesManager
+import com.royals.airescape.engine.RatingManager
 import com.royals.airescape.engine.Renderer
 import com.royals.airescape.engine.SoundManager
+import com.royals.airescape.data.DailyChallengeManager
 import com.royals.airescape.entity.EntityManager
 import com.royals.airescape.entity.LottieBlast
 import com.royals.airescape.input.ButtonController
@@ -54,6 +57,10 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
     // ── Bullet bitmaps ─────────────────────────────────────────────────
     private var bulletBitmap: Bitmap? = null
     private var bulletGreenBitmap: Bitmap? = null
+    private var missileStraightBitmap: Bitmap? = null
+    private var missileBouncingBitmap: Bitmap? = null
+    private var missileClusterBitmap: Bitmap? = null
+    private var missileStealthBitmap: Bitmap? = null
 
     // ── Lottie blast ──────────────────────────────────────────────────
     private var blastLoaded = false
@@ -61,13 +68,20 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
     // ── Helicopter sound ──
     private var helicopterActive = false
 
-    // ── Sky / cloud colors ───────────────────────────────────────────
-    private val skyColor = 0xFF80CBC4.toInt()  // nice teal sky
-
+    // ── Sky / cloud colors (from selected theme) ─────────────────────
+    private val currentTheme: com.royals.airescape.data.ThemeConfig
+    private val skyColor: Int
     private val cloudPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFFFFFFF.toInt()
-        alpha = 35
         style = Paint.Style.FILL
+    }
+
+    init {
+        val themeId = GameData.selectedTheme
+        currentTheme = com.royals.airescape.data.ThemeConfig.THEMES.firstOrNull { it.id == themeId }
+            ?: com.royals.airescape.data.ThemeConfig.THEMES[0]
+        skyColor = currentTheme.skyColor.toInt()
+        cloudPaint.color = currentTheme.cloudColor.toInt()
+        cloudPaint.alpha = currentTheme.cloudAlpha
     }
 
     // ── HUD paints ───────────────────────────────────────────────────
@@ -94,37 +108,62 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         style = Paint.Style.FILL
     }
 
-    private val shieldBarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Constants.SHIELD_COLOR.toInt()
-        style = Paint.Style.FILL
-    }
-
-    private val boostBarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Constants.SPEED_BOOST_COLOR.toInt()
-        style = Paint.Style.FILL
-    }
-
-    private val slowMotionBarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Constants.SLOW_MOTION_COLOR.toInt()
-        style = Paint.Style.FILL
-    }
-
-    private val jammerBarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Constants.MISSILE_JAMMER_COLOR.toInt()
-        style = Paint.Style.FILL
-    }
-
-    private val doubleScoreBarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Constants.DOUBLE_SCORE_COLOR.toInt()
-        style = Paint.Style.FILL
-    }
-
-    private val bulletShootBarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Constants.BULLET_SHOOT_COLOR.toInt()
+    private val barFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
 
     private val barRect = RectF()
+
+    /**
+     * Describes one power-up HUD bar. Built each frame from live player state.
+     */
+    private data class BarInfo(
+        val active: Boolean,
+        val timer: Float,
+        val duration: Float,
+        val label: String,
+        val expiringLabel: String,
+        val color: Long
+    )
+
+    // ── Combo / boss HUD paints ────────────────────────────────────────
+    private val comboPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Constants.STAR_COLOR.toInt()
+        isFakeBoldText = true
+        textAlign = Paint.Align.CENTER
+    }
+    private val bossWarnPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFFF1744.toInt()
+        isFakeBoldText = true
+        textAlign = Paint.Align.CENTER
+    }
+
+    // ── Tutorial state ────────────────────────────────────────────────
+    private var tutorialStep: Int = 0
+    private var tutorialTimer: Float = 0f
+    private val tutorialMessages = listOf(
+        "Drag joystick to steer your plane!",
+        "Collect STARS for score",
+        "SHIELD (S) blocks one missile hit",
+        "SLOW-MO slows all missiles",
+        "JAMMER freezes all missiles",
+        "SPEED BOOST makes you faster",
+        "2X SCORE doubles your points",
+        "BULLET fires at missiles automatically"
+    )
+    private val tutorialPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFFFFFFF.toInt()
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+    }
+    private val tutorialBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF000000.toInt()
+        alpha = 150
+        style = Paint.Style.FILL
+    }
+
+    // ── Daily challenge state ──────────────────────────────────────────
+    private var challengesSubmitted = false
 
     // ── Edge arrow paints ─────────────────────────────────────────────
     private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -152,8 +191,10 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
     private val GAME_OVER_BLAST_DURATION = 0.8f
 
     private val watchAdButtonRect = RectF()
+    private val rateButtonRect = RectF()
     private var adRewardGiven = false
     private var interstitialTriggered = false
+    private var ratingTriggered = false
 
     private val retryButtonRect = RectF()
     private val menuButtonRect = RectF()
@@ -233,6 +274,18 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
 
         entityManager.update(dt)
 
+        // Tutorial progression (first game only)
+        if (!GameData.tutorialShown && tutorialStep < tutorialMessages.size) {
+            tutorialTimer += dt
+            if (tutorialTimer >= 4f) { // 4 seconds per tip
+                tutorialTimer = 0f
+                tutorialStep++
+                if (tutorialStep >= tutorialMessages.size) {
+                    GameData.tutorialShown = true
+                }
+            }
+        }
+
         if (entityManager.gameOver && !showGameOver) {
             gameOverDelay += dt
             if (gameOverDelay >= GAME_OVER_BLAST_DURATION) {
@@ -243,6 +296,17 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
                     scoreSubmitted = true
                     isNewHighScore = entityManager.score > GameData.highScore
                     GameData.submitScore(entityManager.score, entityManager.starsCollected)
+                    // Submit to Google Play Games leaderboard
+                    PlayGamesManager.submitScore(entityManager.score)
+                }
+                if (!challengesSubmitted) {
+                    challengesSubmitted = true
+                    DailyChallengeManager.submitGameResult(
+                        starsCollected = entityManager.starsCollected,
+                        survivalSeconds = entityManager.survivalTime.toInt(),
+                        missilesDestroyed = entityManager.missilesDestroyed,
+                        shieldsCollected = entityManager.shieldsCollected
+                    )
                 }
                 // Interstitial ad every 3rd game over
                 if (!interstitialTriggered) {
@@ -251,6 +315,11 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
                     if (AdManager.gameOverCount % 3 == 0) {
                         surfaceView.post { AdManager.showInterstitial() }
                     }
+                }
+                // Auto in-app review (after 5 sessions, if score >= 50)
+                if (!ratingTriggered) {
+                    ratingTriggered = true
+                    surfaceView.post { RatingManager.onGameOver(entityManager.score) }
                 }
             }
         }
@@ -268,9 +337,12 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         // Scrolling clouds
         renderClouds(canvas)
 
-        // Camera transform for world-space entities
+        // Camera transform for world-space entities (with screen shake)
         canvas.save()
-        canvas.translate(-entityManager.cameraX, -entityManager.cameraY)
+        canvas.translate(
+            -entityManager.cameraX + entityManager.shakeOffsetX,
+            -entityManager.cameraY + entityManager.shakeOffsetY
+        )
         entityManager.render(canvas)
         canvas.restore()
 
@@ -329,6 +401,10 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
                     surfaceView.setScreen(GameScreen(surfaceView))
                     return true
                 }
+                if (rateButtonRect.contains(x, y)) {
+                    surfaceView.post { RatingManager.showReview() }
+                    return true
+                }
                 if (menuButtonRect.contains(x, y)) {
                     surfaceView.setScreen(MenuScreen(surfaceView))
                     return true
@@ -382,6 +458,10 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         entityManager.player.planeBitmap = planeBitmap
         entityManager.player.bitmapRotationOffset = planeConfig.rotationOffset
         entityManager.player.hasBuiltInGun = planeConfig.hasGun
+        entityManager.player.ability = planeConfig.ability
+        if (planeConfig.ability == com.royals.airescape.data.PlaneAbility.EXTRA_LIFE) {
+            entityManager.player.extraLifeAvailable = true
+        }
 
         // Load bullet bitmaps
         if (bulletBitmap == null) {
@@ -392,6 +472,24 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
             bulletGreenBitmap = loadBulletBitmap(R.drawable.bullet_green)
         }
         entityManager.bulletGreenBitmap = bulletGreenBitmap
+
+        // Load missile-type bitmaps
+        if (missileStraightBitmap == null) {
+            missileStraightBitmap = loadBulletBitmap(R.drawable.missile_straight)
+        }
+        entityManager.missileStraightBitmap = missileStraightBitmap
+        if (missileBouncingBitmap == null) {
+            missileBouncingBitmap = loadBulletBitmap(R.drawable.missile_bouncing)
+        }
+        entityManager.missileBouncingBitmap = missileBouncingBitmap
+        if (missileClusterBitmap == null) {
+            missileClusterBitmap = loadBulletBitmap(R.drawable.missile_cluster)
+        }
+        entityManager.missileClusterBitmap = missileClusterBitmap
+        if (missileStealthBitmap == null) {
+            missileStealthBitmap = loadBulletBitmap(R.drawable.missile_stealth)
+        }
+        entityManager.missileStealthBitmap = missileStealthBitmap
 
         // Load Lottie blast composition
         if (!blastLoaded) {
@@ -494,13 +592,53 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
             canvas.drawText("NEW HIGH SCORE!", cx, screenHeight * 0.63f, goHighScorePaint)
         }
 
+        // ── Daily Challenges ─────────────────────────────────────────
+        val challenges = DailyChallengeManager.getTodayChallenges()
+        if (challenges.isNotEmpty()) {
+            var challengeY = screenHeight * 0.60f
+            goDetailPaint.textSize = screenWidth * 0.032f
+            goDetailPaint.textAlign = Paint.Align.CENTER
+
+            Renderer.drawText(
+                canvas, "DAILY CHALLENGES",
+                cx, challengeY,
+                size = screenWidth * 0.035f,
+                color = Constants.STAR_COLOR,
+                align = Paint.Align.CENTER
+            )
+            challengeY += screenWidth * 0.045f
+
+            for (challenge in challenges) {
+                val check = if (challenge.isCompleted) "\u2713 " else ""
+                val text = "$check${challenge.description} (${challenge.progress}/${challenge.target})"
+                val color = if (challenge.isCompleted) 0xFF00E676 else 0xFF5D4037
+                Renderer.drawText(
+                    canvas, text,
+                    cx, challengeY,
+                    size = screenWidth * 0.028f,
+                    color = color,
+                    align = Paint.Align.CENTER
+                )
+                if (challenge.isCompleted) {
+                    Renderer.drawText(
+                        canvas, "+${challenge.rewardStars}\u2605",
+                        cx + screenWidth * 0.35f, challengeY,
+                        size = screenWidth * 0.025f,
+                        color = Constants.STAR_COLOR,
+                        align = Paint.Align.LEFT
+                    )
+                }
+                challengeY += screenWidth * 0.04f
+            }
+        }
+
         // Layout buttons
         val btnW = screenWidth * 0.7f
         val btnH = screenHeight * 0.055f
         val gap = screenHeight * 0.018f
 
         val showWatchAd = AdManager.isRewardedReady() && !adRewardGiven
-        var nextTop = screenHeight * 0.68f
+        var nextTop = screenHeight * 0.78f
 
         // Watch Ad button (gold) - only if rewarded ad available and not yet claimed
         if (showWatchAd) {
@@ -513,6 +651,12 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         // Retry button (green)
         retryButtonRect.set(cx - btnW / 2f, nextTop, cx + btnW / 2f, nextTop + btnH)
         Renderer.drawButton(canvas, retryButtonRect, "RETRY", color = 0xFF00E676, textColor = 0xFF1A1A2E)
+
+        nextTop += btnH + gap
+
+        // Rate Us button (orange-amber)
+        rateButtonRect.set(cx - btnW / 2f, nextTop, cx + btnW / 2f, nextTop + btnH)
+        Renderer.drawButton(canvas, rateButtonRect, "\u2B50 RATE US", color = 0xFFFF9800, textColor = 0xFF1A1A2E)
 
         nextTop += btnH + gap
 
@@ -703,136 +847,105 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
             3f, 3f, pauseIconPaint
         )
 
-        // Power-up timer bars (stacked below score)
+        // Power-up timer bars (data-driven, stacked below score)
         val barWidth = screenWidth * 0.3f
         val barHeight = screenHeight * 0.012f
         val barX = (screenWidth - barWidth) / 2f
         val barSpacing = screenHeight * 0.04f
-        var barIndex = 0
 
-        // Shield timer bar
-        if (entityManager.player.shieldActive) {
+        val warnTime = Constants.POWERUP_WARN_TIME
+        val gameTime = entityManager.survivalTime
+        val p = entityManager.player
+
+        val bars = listOf(
+            BarInfo(p.shieldActive, Float.MAX_VALUE, Float.MAX_VALUE, "SHIELD", "SHIELD", Constants.SHIELD_COLOR),
+            BarInfo(p.speedBoostActive, p.speedBoostTimer, Constants.SPEED_BOOST_DURATION, "BOOST", "BOOST ENDING!", Constants.SPEED_BOOST_COLOR),
+            BarInfo(p.slowMotionActive, p.slowMotionTimer, Constants.SLOW_MOTION_DURATION, "SLOW-MO", "SLOW-MO ENDING!", Constants.SLOW_MOTION_COLOR),
+            BarInfo(p.missileJammerActive, p.missileJammerTimer, Constants.MISSILE_JAMMER_DURATION, "JAMMER", "JAMMER ENDING!", Constants.MISSILE_JAMMER_COLOR),
+            BarInfo(p.doubleScoreActive, p.doubleScoreTimer, Constants.DOUBLE_SCORE_DURATION, "2X SCORE", "2X ENDING!", Constants.DOUBLE_SCORE_COLOR),
+            BarInfo(p.bulletShootActive, p.bulletShootTimer, Constants.BULLET_SHOOT_DURATION, "BULLET", "BULLET ENDING!", Constants.BULLET_SHOOT_COLOR)
+        )
+
+        var barIndex = 0
+        for (bar in bars) {
+            if (!bar.active) continue
             val barY = padding + hudTextSize * 1.8f + barIndex * barSpacing
+            val expiring = bar.timer in 0f..warnTime && bar.duration != Float.MAX_VALUE
+            val flashVisible = !expiring || (gameTime * 8f).toInt() % 2 == 0
 
             barRect.set(barX, barY, barX + barWidth, barY + barHeight)
             canvas.drawRoundRect(barRect, 4f, 4f, barBgPaint)
 
-            val fill = 1f // shield has no timer — always full until missile hit
-            barRect.set(barX, barY, barX + barWidth * fill, barY + barHeight)
-            canvas.drawRoundRect(barRect, 4f, 4f, shieldBarPaint)
-
+            if (flashVisible) {
+                val fill = if (bar.duration == Float.MAX_VALUE) 1f
+                           else (bar.timer / bar.duration).coerceIn(0f, 1f)
+                barFillPaint.color = bar.color.toInt()
+                barRect.set(barX, barY, barX + barWidth * fill, barY + barHeight)
+                canvas.drawRoundRect(barRect, 4f, 4f, barFillPaint)
+            }
             Renderer.drawText(
-                canvas, "SHIELD",
+                canvas, if (expiring) bar.expiringLabel else bar.label,
                 screenWidth / 2f, barY - 4f,
+                size = smallTextSize * 0.7f,
+                color = bar.color,
+                align = Paint.Align.CENTER
+            )
+            barIndex++
+        }
+
+        // ── Combo / streak display ──────────────────────────────────
+        if (entityManager.comboActive) {
+            comboPaint.textSize = smallTextSize * 1.1f
+            val comboText = "COMBO x${entityManager.starStreak} (1.5x)"
+            val pulseFactor = 0.8f + 0.2f * sin(entityManager.survivalTime * 6f).toFloat()
+            comboPaint.alpha = (pulseFactor * 255).toInt().coerceIn(0, 255)
+            canvas.drawText(comboText, screenWidth / 2f, screenHeight * 0.15f, comboPaint)
+        }
+
+        // Missile destroy streak indicator
+        if (entityManager.missileDestroyStreak > 0) {
+            val streakText = "Destroy streak: ${entityManager.missileDestroyStreak}/${Constants.MISSILE_DESTROY_STREAK_FOR_SHIELD}"
+            Renderer.drawText(
+                canvas, streakText,
+                screenWidth / 2f, screenHeight * 0.18f,
                 size = smallTextSize * 0.7f,
                 color = Constants.SHIELD_COLOR,
                 align = Paint.Align.CENTER
             )
-            barIndex++
         }
 
-        // Speed boost timer bar
-        if (entityManager.player.speedBoostActive) {
-            val barY = padding + hudTextSize * 1.8f + barIndex * barSpacing
-
-            barRect.set(barX, barY, barX + barWidth, barY + barHeight)
-            canvas.drawRoundRect(barRect, 4f, 4f, barBgPaint)
-
-            val fill = (entityManager.player.speedBoostTimer / Constants.SPEED_BOOST_DURATION).coerceIn(0f, 1f)
-            barRect.set(barX, barY, barX + barWidth * fill, barY + barHeight)
-            canvas.drawRoundRect(barRect, 4f, 4f, boostBarPaint)
-
-            Renderer.drawText(
-                canvas, "BOOST",
-                screenWidth / 2f, barY - 4f,
-                size = smallTextSize * 0.7f,
-                color = Constants.SPEED_BOOST_COLOR,
-                align = Paint.Align.CENTER
-            )
-            barIndex++
+        // ── Boss warning / HP ───────────────────────────────────────
+        if (entityManager.bossAlive) {
+            bossWarnPaint.textSize = hudTextSize
+            val pulse = 0.6f + 0.4f * sin(entityManager.survivalTime * 5f).toFloat()
+            bossWarnPaint.alpha = (pulse * 255).toInt().coerceIn(0, 255)
+            canvas.drawText("BOSS!", screenWidth / 2f, screenHeight * 0.22f, bossWarnPaint)
         }
 
-        // Slow motion timer bar
-        if (entityManager.player.slowMotionActive) {
-            val barY = padding + hudTextSize * 1.8f + barIndex * barSpacing
+        // ── Tutorial tooltips (first game only) ─────────────────────
+        if (!GameData.tutorialShown && tutorialStep < tutorialMessages.size) {
+            val msg = tutorialMessages[tutorialStep]
+            tutorialPaint.textSize = screenWidth * 0.035f
 
-            barRect.set(barX, barY, barX + barWidth, barY + barHeight)
-            canvas.drawRoundRect(barRect, 4f, 4f, barBgPaint)
+            val tooltipY = screenHeight * 0.88f
+            val tooltipW = screenWidth * 0.8f
+            val tooltipH = screenWidth * 0.07f
 
-            val fill = (entityManager.player.slowMotionTimer / Constants.SLOW_MOTION_DURATION).coerceIn(0f, 1f)
-            barRect.set(barX, barY, barX + barWidth * fill, barY + barHeight)
-            canvas.drawRoundRect(barRect, 4f, 4f, slowMotionBarPaint)
-
-            Renderer.drawText(
-                canvas, "SLOW-MO",
-                screenWidth / 2f, barY - 4f,
-                size = smallTextSize * 0.7f,
-                color = Constants.SLOW_MOTION_COLOR,
-                align = Paint.Align.CENTER
+            // Background pill
+            val bgRect = RectF(
+                screenWidth / 2f - tooltipW / 2f,
+                tooltipY - tooltipH / 2f,
+                screenWidth / 2f + tooltipW / 2f,
+                tooltipY + tooltipH / 2f
             )
-            barIndex++
-        }
+            canvas.drawRoundRect(bgRect, 16f, 16f, tutorialBgPaint)
 
-        // Missile jammer timer bar
-        if (entityManager.player.missileJammerActive) {
-            val barY = padding + hudTextSize * 1.8f + barIndex * barSpacing
+            // Fade in/out
+            val fadeIn = (tutorialTimer / 0.5f).coerceIn(0f, 1f)
+            val fadeOut = if (tutorialTimer > 3.5f) 1f - ((tutorialTimer - 3.5f) / 0.5f).coerceIn(0f, 1f) else 1f
+            tutorialPaint.alpha = (fadeIn * fadeOut * 255).toInt().coerceIn(0, 255)
 
-            barRect.set(barX, barY, barX + barWidth, barY + barHeight)
-            canvas.drawRoundRect(barRect, 4f, 4f, barBgPaint)
-
-            val fill = (entityManager.player.missileJammerTimer / Constants.MISSILE_JAMMER_DURATION).coerceIn(0f, 1f)
-            barRect.set(barX, barY, barX + barWidth * fill, barY + barHeight)
-            canvas.drawRoundRect(barRect, 4f, 4f, jammerBarPaint)
-
-            Renderer.drawText(
-                canvas, "JAMMER",
-                screenWidth / 2f, barY - 4f,
-                size = smallTextSize * 0.7f,
-                color = Constants.MISSILE_JAMMER_COLOR,
-                align = Paint.Align.CENTER
-            )
-            barIndex++
-        }
-
-        // Double score timer bar
-        if (entityManager.player.doubleScoreActive) {
-            val barY = padding + hudTextSize * 1.8f + barIndex * barSpacing
-
-            barRect.set(barX, barY, barX + barWidth, barY + barHeight)
-            canvas.drawRoundRect(barRect, 4f, 4f, barBgPaint)
-
-            val fill = (entityManager.player.doubleScoreTimer / Constants.DOUBLE_SCORE_DURATION).coerceIn(0f, 1f)
-            barRect.set(barX, barY, barX + barWidth * fill, barY + barHeight)
-            canvas.drawRoundRect(barRect, 4f, 4f, doubleScoreBarPaint)
-
-            Renderer.drawText(
-                canvas, "2X SCORE",
-                screenWidth / 2f, barY - 4f,
-                size = smallTextSize * 0.7f,
-                color = Constants.DOUBLE_SCORE_COLOR,
-                align = Paint.Align.CENTER
-            )
-            barIndex++
-        }
-
-        // Bullet shoot timer bar
-        if (entityManager.player.bulletShootActive) {
-            val barY = padding + hudTextSize * 1.8f + barIndex * barSpacing
-
-            barRect.set(barX, barY, barX + barWidth, barY + barHeight)
-            canvas.drawRoundRect(barRect, 4f, 4f, barBgPaint)
-
-            val fill = (entityManager.player.bulletShootTimer / Constants.BULLET_SHOOT_DURATION).coerceIn(0f, 1f)
-            barRect.set(barX, barY, barX + barWidth * fill, barY + barHeight)
-            canvas.drawRoundRect(barRect, 4f, 4f, bulletShootBarPaint)
-
-            Renderer.drawText(
-                canvas, "BULLET",
-                screenWidth / 2f, barY - 4f,
-                size = smallTextSize * 0.7f,
-                color = Constants.BULLET_SHOOT_COLOR,
-                align = Paint.Align.CENTER
-            )
+            canvas.drawText(msg, screenWidth / 2f, tooltipY + tutorialPaint.textSize / 3f, tutorialPaint)
         }
     }
 

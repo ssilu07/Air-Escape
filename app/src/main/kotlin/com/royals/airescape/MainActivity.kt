@@ -10,6 +10,8 @@ import android.widget.FrameLayout
 import com.royals.airescape.ads.AdManager
 import com.royals.airescape.data.GameData
 import com.royals.airescape.engine.GameSurfaceView
+import com.royals.airescape.engine.PlayGamesManager
+import com.royals.airescape.engine.RatingManager
 
 class MainActivity : Activity() {
     private lateinit var gameSurfaceView: GameSurfaceView
@@ -29,6 +31,12 @@ class MainActivity : Activity() {
         AdManager.init(this)
         AdManager.createBanner(rootLayout)
 
+        // Initialize Google Play Games
+        PlayGamesManager.init(this)
+
+        // Initialize In-App Review
+        RatingManager.init(this)
+
         hideSystemUI()
     }
 
@@ -47,6 +55,8 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         super.onDestroy()
         AdManager.destroy()
+        PlayGamesManager.release()
+        RatingManager.release()
     }
 
     @Deprecated("Deprecated in Java")

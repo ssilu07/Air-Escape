@@ -8,6 +8,7 @@ import com.royals.airescape.ads.AdManager
 import com.royals.airescape.data.Constants
 import com.royals.airescape.data.GameData
 import com.royals.airescape.engine.GameSurfaceView
+import com.royals.airescape.engine.PlayGamesManager
 import com.royals.airescape.engine.Renderer
 import com.royals.airescape.util.Vector2
 import kotlin.math.cos
@@ -26,6 +27,9 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
     private val normalModeRect = RectF()
     private val hardModeRect = RectF()
     private val planesButtonRect = RectF()
+    private val themesButtonRect = RectF()
+    private val missileGuideButtonRect = RectF()
+    private val leaderboardButtonRect = RectF()
     private val settingsButtonRect = RectF()
 
     // ── Layout state ─────────────────────────────────────────────────
@@ -101,39 +105,36 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
         screenHeight = sh
 
         val btnW = sw * 0.7f
-        val btnH = sh * 0.055f
+        val btnH = sh * 0.048f
         val centerX = sw / 2f
-        val gap = sh * 0.018f
+        val gap = sh * 0.012f
         val padding = sw * 0.06f
+        val halfBtnW = (btnW - gap) / 2f
 
         // Mode buttons (NORMAL / HARD) - horizontal row
-        val modeTop = sh * 0.42f
-        val modeW = (btnW - gap) / 2f
-        val modeH = btnH * 0.9f
+        val modeTop = sh * 0.30f
+        val modeH = btnH * 0.85f
         val modeLeft = centerX - btnW / 2f
-        normalModeRect.set(modeLeft, modeTop, modeLeft + modeW, modeTop + modeH)
-        hardModeRect.set(modeLeft + modeW + gap, modeTop, modeLeft + modeW * 2f + gap, modeTop + modeH)
+        normalModeRect.set(modeLeft, modeTop, modeLeft + halfBtnW, modeTop + modeH)
+        hardModeRect.set(modeLeft + halfBtnW + gap, modeTop, modeLeft + halfBtnW * 2f + gap, modeTop + modeH)
 
-        // Play button - below mode buttons
+        // Play button — full width
         val playTop = modeTop + modeH + gap * 1.5f
-        playButtonRect.set(
-            centerX - btnW / 2f, playTop,
-            centerX + btnW / 2f, playTop + btnH
-        )
+        playButtonRect.set(centerX - btnW / 2f, playTop, centerX + btnW / 2f, playTop + btnH)
 
-        // Planes button
-        val planesTop = playTop + btnH + gap
-        planesButtonRect.set(
-            centerX - btnW / 2f, planesTop,
-            centerX + btnW / 2f, planesTop + btnH
-        )
+        // Row: PLANES | THEMES — side by side
+        val row2Top = playTop + btnH + gap
+        planesButtonRect.set(modeLeft, row2Top, modeLeft + halfBtnW, row2Top + btnH)
+        themesButtonRect.set(modeLeft + halfBtnW + gap, row2Top, modeLeft + halfBtnW * 2f + gap, row2Top + btnH)
 
-        // Settings button
-        val settingsTop = planesTop + btnH + gap
-        settingsButtonRect.set(
-            centerX - btnW / 2f, settingsTop,
-            centerX + btnW / 2f, settingsTop + btnH
-        )
+        // Row: MISSILE GUIDE | LEADERBOARD — side by side
+        val row3Top = row2Top + btnH + gap
+        missileGuideButtonRect.set(modeLeft, row3Top, modeLeft + halfBtnW, row3Top + btnH)
+        leaderboardButtonRect.set(modeLeft + halfBtnW + gap, row3Top, modeLeft + halfBtnW * 2f + gap, row3Top + btnH)
+
+        // Settings button — full width
+        val settingsTop = row3Top + btnH + gap
+        settingsButtonRect.set(centerX - btnW / 2f, settingsTop, centerX + btnW / 2f, settingsTop + btnH)
 
         layoutDone = true
 
@@ -189,8 +190,8 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
         renderBackgroundMissiles(canvas)
 
         // Title with subtle glow
-        val titleSize = screenWidth * 0.14f
-        val titleY = screenHeight * 0.2f
+        val titleSize = screenWidth * 0.12f
+        val titleY = screenHeight * 0.14f
         val glowOffset = sin(titleTimer * 2f) * 2f
 
         titleGlowPaint.textSize = titleSize + 4f
@@ -200,8 +201,8 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
         canvas.drawText("MISSILES!", screenWidth / 2f, titleY, titlePaint)
 
         // Subtitle
-        subtitlePaint.textSize = screenWidth * 0.035f
-        canvas.drawText("Dodge. Survive. Collect.", screenWidth / 2f, titleY + titleSize * 0.5f, subtitlePaint)
+        subtitlePaint.textSize = screenWidth * 0.032f
+        canvas.drawText("Dodge. Survive. Collect.", screenWidth / 2f, titleY + titleSize * 0.45f, subtitlePaint)
 
         // Mode buttons (NORMAL / HARD)
         val isHard = GameData.hardMode
@@ -222,6 +223,27 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
             textColor = 0xFF1A1A2E
         )
 
+        // Themes button (purple)
+        Renderer.drawButton(
+            canvas, themesButtonRect, "THEMES",
+            color = 0xFF7C4DFF,
+            textColor = 0xFFFFFFFF
+        )
+
+        // Missile guide button (red)
+        Renderer.drawButton(
+            canvas, missileGuideButtonRect, "MISSILE GUIDE",
+            color = 0xFFFF1744,
+            textColor = 0xFFFFFFFF
+        )
+
+        // Leaderboard button (gold)
+        Renderer.drawButton(
+            canvas, leaderboardButtonRect, "LEADERBOARD",
+            color = 0xFFFFD740,
+            textColor = 0xFF1A1A2E
+        )
+
         // Settings button (gray)
         Renderer.drawButton(
             canvas, settingsButtonRect, "SETTINGS",
@@ -229,22 +251,19 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
             textColor = 0xFFFFFFFF
         )
 
-        // High score display at bottom
-        val hsText = "HIGH SCORE: ${GameData.highScore}"
+        // High score + stars (below settings, spaced nicely)
+        val infoY = settingsButtonRect.bottom + screenHeight * 0.035f
         Renderer.drawText(
-            canvas, hsText,
-            screenWidth / 2f, screenHeight * 0.88f,
-            size = screenWidth * 0.04f,
+            canvas, "HIGH SCORE: ${GameData.highScore}",
+            screenWidth / 2f, infoY,
+            size = screenWidth * 0.038f,
             color = Constants.STAR_COLOR,
             align = Paint.Align.CENTER
         )
-
-        // Total stars display
-        val starsText = "Stars: ${GameData.totalStars}"
         Renderer.drawText(
-            canvas, starsText,
-            screenWidth / 2f, screenHeight * 0.92f,
-            size = screenWidth * 0.032f,
+            canvas, "\u2605 ${GameData.totalStars} Stars",
+            screenWidth / 2f, infoY + screenWidth * 0.05f,
+            size = screenWidth * 0.03f,
             color = 0xFFCCCCCC,
             align = Paint.Align.CENTER
         )
@@ -272,6 +291,21 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
 
             if (planesButtonRect.contains(x, y)) {
                 surfaceView.setScreen(PlaneSelectScreen(surfaceView))
+                return true
+            }
+
+            if (themesButtonRect.contains(x, y)) {
+                surfaceView.setScreen(ThemeSelectScreen(surfaceView))
+                return true
+            }
+
+            if (missileGuideButtonRect.contains(x, y)) {
+                surfaceView.setScreen(MissileInfoScreen(surfaceView))
+                return true
+            }
+
+            if (leaderboardButtonRect.contains(x, y)) {
+                PlayGamesManager.showLeaderboard()
                 return true
             }
 

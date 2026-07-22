@@ -41,6 +41,13 @@ class SettingsScreen(private val surfaceView: GameSurfaceView) : Screen {
     private val soundOnRect = RectF()
     private val soundOffRect = RectF()
 
+    // Colorblind toggle
+    private val cbOnRect = RectF()
+    private val cbOffRect = RectF()
+
+    // Cloud sync button
+    private val cloudSyncRect = RectF()
+
     // Back button
     private val backButtonRect = RectF()
 
@@ -103,12 +110,23 @@ class SettingsScreen(private val surfaceView: GameSurfaceView) : Screen {
         soundOnRect.set(padding, soundY, padding + modeW, soundY + optionH)
         soundOffRect.set(padding * 2f + modeW, soundY, padding * 2f + modeW * 2f, soundY + optionH)
 
+        // ── Colorblind mode (2 buttons in a row) ────────────────────
+        val cbY = sh * 0.66f
+        cbOnRect.set(padding, cbY, padding + modeW, cbY + optionH)
+        cbOffRect.set(padding * 2f + modeW, cbY, padding * 2f + modeW * 2f, cbY + optionH)
+
+        // ── Cloud sync button ──────────────────────────────────────
+        val syncW = sw * 0.5f
+        val syncH = sh * 0.045f
+        val syncY = sh * 0.78f
+        cloudSyncRect.set((sw - syncW) / 2f, syncY, (sw + syncW) / 2f, syncY + syncH)
+
         // ── Back button ──────────────────────────────────────────────
         val backW = sw * 0.6f
         val backH = sh * 0.055f
         backButtonRect.set(
-            (sw - backW) / 2f, sh * 0.70f,
-            (sw + backW) / 2f, sh * 0.70f + backH
+            (sw - backW) / 2f, sh * 0.85f,
+            (sw + backW) / 2f, sh * 0.85f + backH
         )
 
         layoutDone = true
@@ -172,6 +190,23 @@ class SettingsScreen(private val surfaceView: GameSurfaceView) : Screen {
         val modeDesc = if (hardMode) "Faster & more missiles" else "Standard game speed"
         canvas.drawText(modeDesc, screenWidth / 2f, screenHeight * 0.34f + screenHeight * 0.05f + screenWidth * 0.04f, descPaint)
 
+        // ── Colorblind Mode section ─────────────────────────────────
+        canvas.drawText("COLORBLIND MODE", padding, screenHeight * 0.63f, sectionPaint)
+
+        val cbOn = GameData.colorblindMode
+        drawOption(canvas, cbOnRect, "On", cbOn)
+        drawOption(canvas, cbOffRect, "Off", !cbOn)
+
+        val cbDesc = if (cbOn) "Symbols on missiles for clarity" else "Default missile appearance"
+        canvas.drawText(cbDesc, screenWidth / 2f, screenHeight * 0.66f + screenHeight * 0.05f + screenWidth * 0.04f, descPaint)
+
+        // ── Cloud sync button ───────────────────────────────────────
+        Renderer.drawButton(
+            canvas, cloudSyncRect, "CLOUD BACKUP",
+            color = 0xFF40C4FF,
+            textColor = 0xFFFFFFFF
+        )
+
         // ── Back button ──────────────────────────────────────────────
         Renderer.drawButton(
             canvas, backButtonRect, "BACK",
@@ -218,6 +253,25 @@ class SettingsScreen(private val surfaceView: GameSurfaceView) : Screen {
             if (soundOffRect.contains(x, y)) {
                 GameData.soundEnabled = false
                 SoundManager.setSoundEnabled(false)
+                return true
+            }
+
+            // Colorblind mode
+            if (cbOnRect.contains(x, y)) {
+                GameData.colorblindMode = true
+                return true
+            }
+            if (cbOffRect.contains(x, y)) {
+                GameData.colorblindMode = false
+                return true
+            }
+
+            // Cloud sync — triggers Android backup manager
+            if (cloudSyncRect.contains(x, y)) {
+                try {
+                    val bm = android.app.backup.BackupManager(surfaceView.context)
+                    bm.dataChanged()
+                } catch (_: Exception) { }
                 return true
             }
 

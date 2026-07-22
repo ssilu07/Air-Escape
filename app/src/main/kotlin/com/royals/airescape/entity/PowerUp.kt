@@ -59,7 +59,10 @@ class PowerUp(
 
     override fun update(dt: Float) {
         pulseTimer += dt
-        // Power-ups stay forever until collected — no despawn
+        lifetime -= dt
+        if (lifetime <= 0f) {
+            alive = false
+        }
     }
 
     // ── Render ─────────────────────────────────────────────────────
@@ -68,7 +71,8 @@ class PowerUp(
         val pulse = 1f + 0.15f * sin(pulseTimer * 5f)
         val drawRadius = radius * pulse
 
-        // No flicker — power-ups stay permanently until collected
+        // Flicker when about to despawn (last 3 seconds)
+        if (lifetime < 3f && (pulseTimer * 8f).toInt() % 2 == 0) return
 
         val color: Int
         val iconText: String

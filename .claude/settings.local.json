@@ -19,7 +19,11 @@
       "Bash(dir:*)",
       "Bash(git --no-pager diff \"app/src/main/kotlin/com/example/airescape/MainActivity.kt\")",
       "Bash(test:*)",
-      "Bash(git --no-pager diff:*)"
+      "Bash(git --no-pager diff:*)",
+      "Read(//mnt/c/Users/Sumit Singh/AndroidStudioProjects/AirEscape/**)",
+      "Bash(./gradlew compileDebugKotlin)",
+      "Bash(cd \"C:/Users/Sumit Singh/AndroidStudioProjects/AirEscape/android\" && ./gradlew :app:dependencies --configuration debugRuntimeClasspath 2>&1 | grep -i \"snapshot\\\\|games\" | head -10)",
+      "Bash(find \"C:\\\\Users\\\\Sumit Singh\\\\AndroidStudioProjects\\\\AirEscape\\\\android\\\\app\\\\src\" -type f \\\\\\( -name \"*.kt\" -o -name \"*.java\" -o -name \"*.xml\" \\\\\\) 2>/dev/null | wc -l)"
     ]
   }
 }

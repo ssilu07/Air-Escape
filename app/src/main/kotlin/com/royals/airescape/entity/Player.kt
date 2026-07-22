@@ -4,10 +4,14 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import com.royals.airescape.data.Constants
+import com.royals.airescape.data.PlaneAbility
 import com.royals.airescape.engine.Renderer
 import com.royals.airescape.util.Vector2
 import kotlin.math.PI
 import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.random.Random
 
 /**
  * The player-controlled plane entity.
@@ -74,6 +78,15 @@ class Player : Entity(
     /** Plane has a permanent built-in gun (e.g. Jet, Rafale). */
     var hasBuiltInGun: Boolean = false
 
+    // ── Passive ability ──────────────────────────────────────────
+    var ability: PlaneAbility = PlaneAbility.NONE
+
+    // Shield regen timer (for SHIELD_REGEN ability)
+    var shieldRegenTimer: Float = 0f
+
+    // Extra life (for EXTRA_LIFE ability)
+    var extraLifeAvailable: Boolean = false
+
     // ── Trail particles ────────────────────────────────────────────
     data class TrailParticle(
         var position: Vector2,
@@ -84,11 +97,25 @@ class Player : Entity(
     private val trailParticles = mutableListOf<TrailParticle>()
     private var trailSpawnAccumulator: Float = 0f
 
+    // ── Speed boost streak particles ─────────────────────────────────
+    data class StreakParticle(
+        var position: Vector2,
+        var alpha: Float,
+        var lifetime: Float,
+        var length: Float
+    )
+    private val boostStreaks = mutableListOf<StreakParticle>()
+    private var streakSpawnAccumulator: Float = 0f
+
     private val shieldPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 3f
     }
     private val trailPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val streakPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        strokeWidth = 2f
+        strokeCap = Paint.Cap.ROUND
+    }
 
     // ── Public helpers ─────────────────────────────────────────────
 
@@ -206,6 +233,18 @@ class Player : Entity(
             bulletFireAccumulator += dt
         }
 
+        // Shield regen ability: auto-shield every 45 seconds if not active
+        if (ability == PlaneAbility.SHIELD_REGEN && !shieldActive) {
+            shieldRegenTimer += dt
+            if (shieldRegenTimer >= Constants.SHIELD_REGEN_INTERVAL) {
+                shieldRegenTimer = 0f
+                activateShield()
+            }
+        }
+
+        // Extra life: set flag at start (managed by EntityManager on first hit)
+        // (no per-frame work needed)
+
         // Trail particle spawning (always — plane is always moving)
         trailSpawnAccumulator += dt
         val spawnInterval = 0.02f
@@ -228,11 +267,54 @@ class Player : Entity(
             p.alpha = (p.lifetime / Constants.TRAIL_PARTICLE_LIFETIME).coerceIn(0f, 1f)
             if (p.lifetime <= 0f) iter.remove()
         }
+
+        // Speed boost motion streaks
+        if (speedBoostActive) {
+            streakSpawnAccumulator += dt
+            val streakInterval = 0.03f
+            while (streakSpawnAccumulator >= streakInterval) {
+                streakSpawnAccumulator -= streakInterval
+                // Spawn streak at random offset from player
+                val perpAngle = angle + PI.toFloat() / 2f
+                val offset = (Random.nextFloat() - 0.5f) * radius * 3f
+                val sx = position.x + cos(perpAngle) * offset
+                val sy = position.y + sin(perpAngle) * offset
+                boostStreaks.add(StreakParticle(
+                    position = Vector2(sx, sy),
+                    alpha = 1f,
+                    lifetime = Constants.BOOST_STREAK_LIFETIME,
+                    length = 15f + Random.nextFloat() * 20f
+                ))
+            }
+        } else {
+            streakSpawnAccumulator = 0f
+        }
+        // Update streaks
+        val sIter = boostStreaks.iterator()
+        while (sIter.hasNext()) {
+            val s = sIter.next()
+            s.lifetime -= dt
+            s.alpha = (s.lifetime / Constants.BOOST_STREAK_LIFETIME).coerceIn(0f, 1f)
+            // Streaks stay in world space (player moves past them)
+            if (s.lifetime <= 0f) sIter.remove()
+        }
     }
 
     // ── Render ─────────────────────────────────────────────────────
 
     override fun render(canvas: Canvas) {
+        // Speed boost motion streaks (behind everything)
+        if (boostStreaks.isNotEmpty()) {
+            val backAngle = angle + PI.toFloat() // opposite direction
+            for (s in boostStreaks) {
+                streakPaint.color = Constants.SPEED_BOOST_COLOR.toInt()
+                streakPaint.alpha = (s.alpha * 120).toInt().coerceIn(0, 255)
+                val endX = s.position.x + cos(backAngle) * s.length
+                val endY = s.position.y + sin(backAngle) * s.length
+                canvas.drawLine(s.position.x, s.position.y, endX, endY, streakPaint)
+            }
+        }
+
         // Trail particles (drawn behind the plane)
         for (p in trailParticles) {
             trailPaint.color = planeColor
