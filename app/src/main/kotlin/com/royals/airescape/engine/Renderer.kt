@@ -264,4 +264,30 @@ object Renderer {
         val textY = rect.centerY() - (textPaint.descent() + textPaint.ascent()) / 2f
         canvas.drawText(text, rect.centerX(), textY, textPaint)
     }
+
+    // ---- Coin shape ----
+
+    fun drawCoin(
+        canvas: Canvas,
+        center: Vector2,
+        radius: Float
+    ) {
+        // Outer gold circle
+        fillPaint.color = 0xFFFFD700.toInt()
+        fillPaint.style = Paint.Style.FILL
+        canvas.drawCircle(center.x, center.y, radius, fillPaint)
+
+        // Inner ridge
+        strokePaint.color = 0xFFFFA000.toInt()
+        strokePaint.strokeWidth = (radius * 0.16f).coerceAtLeast(1.5f)
+        canvas.drawCircle(center.x, center.y, radius * 0.78f, strokePaint)
+
+        // ₹ symbol
+        textPaint.textSize = radius * 1.05f
+        textPaint.color = 0xFF5D4037.toInt()
+        textPaint.textAlign = Paint.Align.CENTER
+        val yOffset = (textPaint.descent() + textPaint.ascent()) / 2f
+        canvas.drawText("\u20B9", center.x, center.y - yOffset, textPaint)
+    }
 }
+

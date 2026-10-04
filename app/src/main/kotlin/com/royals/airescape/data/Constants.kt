@@ -134,4 +134,16 @@ object Constants {
     const val STAR_MAGNET_FORCE = 300f           // px/s attraction speed
     const val SHIELD_REGEN_INTERVAL = 45f        // seconds between auto-shield
     const val SCORE_BONUS_MULTIPLIER = 1.2f      // 20% permanent score bonus
+
+    // Earning & Coins system (1 Star = 1 Coin)
+    const val COINS_PER_STAR = 1                 // Each star collected gives 1 coin
+    const val COINS_PER_RUPEE = 100              // 100 coins = 1 Rupee (₹1.00)
+    const val MIN_WITHDRAW_COINS = 500           // Minimum 500 coins required to withdraw (₹5.00)
+    const val REWARD_AD_COINS = 20               // Extra coins for watching rewarded ad
+    const val COIN_COLOR = 0xFFFFD700            // Gold coin color
+
+    // Supabase Cloud Configuration
+    const val SUPABASE_URL = "https://ugnhfkhsjfkzepsnjiyk.supabase.co"
+    const val SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVnbmhma2hzamZremVwc25qaXlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTUxNzksImV4cCI6MjEwMTA3MTE3OX0.H9TAR_WGfvzgUTsnxht-n-n7ywxlfQHoMkk65L7oWdo"
 }
+

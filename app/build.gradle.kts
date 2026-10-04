@@ -7,12 +7,24 @@ android {
     namespace = "com.royals.airescape"
     compileSdk = 36
 
+    val keystorePath = System.getenv("KEYSTORE_FILE")
+        ?: (if (file("D:\\java\\Key\\airescape").exists()) "D:\\java\\Key\\airescape" else null)
+
     signingConfigs {
         create("release") {
-            storeFile = file("D:\\java\\Key\\airescape")
-            storePassword = "8750257510"
-            keyAlias = "key0"
-            keyPassword = "8750257510"
+            if (keystorePath != null && file(keystorePath).exists()) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "8750257510"
+                keyAlias = System.getenv("KEY_ALIAS") ?: "key0"
+                keyPassword = System.getenv("KEY_PASSWORD") ?: "8750257510"
+            } else {
+                // In CI without keystore secret, use debug signing config so release build still compiles
+                val debugConfig = getByName("debug")
+                storeFile = debugConfig.storeFile
+                storePassword = debugConfig.storePassword
+                keyAlias = debugConfig.keyAlias
+                keyPassword = debugConfig.keyPassword
+            }
         }
     }
 

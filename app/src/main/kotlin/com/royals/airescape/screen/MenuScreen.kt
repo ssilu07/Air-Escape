@@ -30,7 +30,9 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
     private val themesButtonRect = RectF()
     private val missileGuideButtonRect = RectF()
     private val leaderboardButtonRect = RectF()
+    private val walletButtonRect = RectF()
     private val settingsButtonRect = RectF()
+
 
     // ── Layout state ─────────────────────────────────────────────────
     private var screenWidth = 0f
@@ -132,11 +134,13 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
         missileGuideButtonRect.set(modeLeft, row3Top, modeLeft + halfBtnW, row3Top + btnH)
         leaderboardButtonRect.set(modeLeft + halfBtnW + gap, row3Top, modeLeft + halfBtnW * 2f + gap, row3Top + btnH)
 
-        // Settings button — full width
-        val settingsTop = row3Top + btnH + gap
-        settingsButtonRect.set(centerX - btnW / 2f, settingsTop, centerX + btnW / 2f, settingsTop + btnH)
+        // Row: WALLET | SETTINGS — side by side
+        val row4Top = row3Top + btnH + gap
+        walletButtonRect.set(modeLeft, row4Top, modeLeft + halfBtnW, row4Top + btnH)
+        settingsButtonRect.set(modeLeft + halfBtnW + gap, row4Top, modeLeft + halfBtnW * 2f + gap, row4Top + btnH)
 
         layoutDone = true
+
 
         // Seed some initial background missiles
         for (i in 0..5) {
@@ -244,6 +248,13 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
             textColor = 0xFF1A1A2E
         )
 
+        // Wallet button (gold)
+        Renderer.drawButton(
+            canvas, walletButtonRect, "\uD83E\uDE99 WALLET",
+            color = 0xFFFFD700,
+            textColor = 0xFF1A1A2E
+        )
+
         // Settings button (gray)
         Renderer.drawButton(
             canvas, settingsButtonRect, "SETTINGS",
@@ -251,8 +262,8 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
             textColor = 0xFFFFFFFF
         )
 
-        // High score + stars (below settings, spaced nicely)
-        val infoY = settingsButtonRect.bottom + screenHeight * 0.035f
+        // High score + stars + coins (below settings, spaced nicely)
+        val infoY = walletButtonRect.bottom + screenHeight * 0.035f
         Renderer.drawText(
             canvas, "HIGH SCORE: ${GameData.highScore}",
             screenWidth / 2f, infoY,
@@ -260,11 +271,12 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
             color = Constants.STAR_COLOR,
             align = Paint.Align.CENTER
         )
+        val walletRs = String.format(java.util.Locale.US, "%.2f", GameData.totalCoins / Constants.COINS_PER_RUPEE.toFloat())
         Renderer.drawText(
-            canvas, "\u2605 ${GameData.totalStars} Stars",
+            canvas, "\u2605 ${GameData.totalStars} Stars   \u2022   \uD83E\uDE99 ${GameData.totalCoins} Coins (\u20B9$walletRs)",
             screenWidth / 2f, infoY + screenWidth * 0.05f,
-            size = screenWidth * 0.03f,
-            color = 0xFFCCCCCC,
+            size = screenWidth * 0.032f,
+            color = 0xFFE0E0E0,
             align = Paint.Align.CENTER
         )
     }
@@ -309,6 +321,11 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
                 return true
             }
 
+            if (walletButtonRect.contains(x, y)) {
+                surfaceView.setScreen(WalletScreen(surfaceView))
+                return true
+            }
+
             if (settingsButtonRect.contains(x, y)) {
                 surfaceView.setScreen(SettingsScreen(surfaceView))
                 return true
@@ -316,6 +333,7 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
         }
         return true
     }
+
 
     // ── Background missiles ──────────────────────────────────────────
 

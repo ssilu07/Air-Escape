@@ -8,9 +8,6 @@
 /captures
 .externalNativeBuild
 .cxx
-gradle-wrapper.jar
-/gradlew
-/gradlew.bat
 GeneratedPluginRegistrant.java
 
 # Remember to never publicly share your keystore.

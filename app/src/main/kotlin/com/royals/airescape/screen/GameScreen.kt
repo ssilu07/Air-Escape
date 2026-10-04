@@ -391,8 +391,10 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
                         AdManager.showRewarded(
                             onRewarded = {
                                 adRewardGiven = true
-                                GameData.totalStars += 20
+                                GameData.totalStars += Constants.REWARD_AD_COINS
+                                GameData.addCoins(Constants.REWARD_AD_COINS)
                             }
+
                         )
                     }
                     return true
@@ -564,9 +566,9 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         goScorePaint.textSize = screenWidth * 0.18f
         canvas.drawText("${entityManager.score}", cx, screenHeight * 0.36f, goScorePaint)
 
-        // Star icon + count
-        goDetailPaint.textSize = screenWidth * 0.045f
-        val starText = "\u2605  +${entityManager.starsCollected}"
+        // Stars + Coins collected (1 Star = 1 Coin)
+        goDetailPaint.textSize = screenWidth * 0.042f
+        val starText = "\u2605 +${entityManager.starsCollected} Stars  |  \uD83E\uDE99 +${entityManager.starsCollected} Coins"
         canvas.drawText(starText, cx, screenHeight * 0.44f, goDetailPaint)
 
         // Survival time
@@ -577,12 +579,15 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         canvas.drawText(timeText, cx, screenHeight * 0.49f, goDetailPaint)
 
         // Divider line
-        val divW = screenWidth * 0.4f
+        val divW = screenWidth * 0.45f
         canvas.drawLine(cx - divW / 2f, screenHeight * 0.53f, cx + divW / 2f, screenHeight * 0.53f, goDividerPaint)
 
-        // Total stars
-        goDetailPaint.textSize = screenWidth * 0.04f
-        canvas.drawText("\u2605  ${GameData.totalStars} total stars", cx, screenHeight * 0.575f, goDetailPaint)
+        // Total stars & Wallet balance
+        goDetailPaint.textSize = screenWidth * 0.038f
+        val walletRs = String.format(java.util.Locale.US, "%.2f", GameData.totalCoins / Constants.COINS_PER_RUPEE.toFloat())
+        val totalsText = "\u2605 ${GameData.totalStars} Stars  \u2022  \uD83E\uDE99 ${GameData.totalCoins} Coins (\u20B9$walletRs)"
+        canvas.drawText(totalsText, cx, screenHeight * 0.575f, goDetailPaint)
+
 
         // New high score
         if (isNewHighScore) {
@@ -643,10 +648,11 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         // Watch Ad button (gold) - only if rewarded ad available and not yet claimed
         if (showWatchAd) {
             watchAdButtonRect.set(cx - btnW / 2f, nextTop, cx + btnW / 2f, nextTop + btnH)
-            Renderer.drawButton(canvas, watchAdButtonRect, "WATCH AD  +20 \u2605",
+            Renderer.drawButton(canvas, watchAdButtonRect, "WATCH AD  +${Constants.REWARD_AD_COINS} \u2605 & +${Constants.REWARD_AD_COINS} \uD83E\uDE99",
                 color = 0xFFFFD600, textColor = 0xFF1A1A2E)
             nextTop += btnH + gap
         }
+
 
         // Retry button (green)
         retryButtonRect.set(cx - btnW / 2f, nextTop, cx + btnW / 2f, nextTop + btnH)
@@ -818,6 +824,18 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
             Constants.STAR_COLOR
         )
         canvas.drawText(starText, starTextX, starTextY, starHudPaint)
+
+        // Coins earned (below star count: 1 Star = 1 Coin)
+        val coinTextY = starTextY + smallTextSize * 1.3f
+        val coinText = "+${entityManager.starsCollected}"
+        val coinIconX = starTextX - starHudPaint.measureText(coinText) - smallTextSize * 0.8f
+        Renderer.drawCoin(
+            canvas,
+            Vector2(coinIconX, coinTextY - smallTextSize * 0.3f),
+            smallTextSize * 0.42f
+        )
+        canvas.drawText(coinText, starTextX, coinTextY, starHudPaint)
+
 
         // Survival time (top left)
         val totalSeconds = entityManager.survivalTime.toInt()

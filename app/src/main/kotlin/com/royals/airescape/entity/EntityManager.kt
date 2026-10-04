@@ -31,6 +31,8 @@ class EntityManager {
     val explosions: MutableList<Explosion> = mutableListOf()
     val lottieBlasts: MutableList<LottieBlast> = mutableListOf()
     val bosses: MutableList<BossMissile> = mutableListOf()
+    val floatingTexts: MutableList<FloatingText> = mutableListOf()
+
 
     /** Bullet bitmap to apply to spawned missiles (homing). */
     var bulletBitmap: Bitmap? = null
@@ -138,6 +140,8 @@ class EntityManager {
         explosions.clear()
         lottieBlasts.clear()
         bosses.clear()
+        floatingTexts.clear()
+
 
         // Reset score / timers
         score = 0
@@ -350,7 +354,16 @@ class EntityManager {
         explosions.removeAll { !it.alive }
         lottieBlasts.removeAll { !it.alive }
 
+        // ---- Floating texts update ----------------------------------
+        val ftIter = floatingTexts.iterator()
+        while (ftIter.hasNext()) {
+            val ft = ftIter.next()
+            ft.update(dt)
+            if (!ft.alive) ftIter.remove()
+        }
+
         // ---- Screen shake update ------------------------------------
+
         if (shakeTimer > 0f) {
             shakeTimer -= dt
             val t = (shakeTimer / Constants.SHAKE_DURATION).coerceIn(0f, 1f)
@@ -386,7 +399,9 @@ class EntityManager {
         player.render(canvas)
         for (explosion in explosions) explosion.render(canvas)
         for (blast in lottieBlasts) LottieBlast.renderBlast(canvas, blast)
+        for (ft in floatingTexts) ft.render(canvas)
     }
+
 
     // ── Collision helpers ──────────────────────────────────────────
 
@@ -585,6 +600,8 @@ class EntityManager {
                 star.alive = false
                 starsCollected++
                 starStreak++
+                floatingTexts.add(FloatingText(star.position, "+1 \uD83E\uDE99", color = 0xFFFFD700.toInt()))
+
                 // Combo: 5 stars in a row = 1.5x score bonus
                 comboActive = starStreak >= Constants.STAR_STREAK_THRESHOLD
                 var starScore = if (player.doubleScoreActive) 20 else 10

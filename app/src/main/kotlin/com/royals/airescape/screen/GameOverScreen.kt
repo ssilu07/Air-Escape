@@ -142,12 +142,21 @@ class GameOverScreen(
         scorePaint.textSize = screenWidth * 0.035f
         canvas.drawText("SCORE", centerX, screenHeight * 0.35f, scorePaint)
 
-        // Stars collected
-        val starIcon = "\u2605" // filled star unicode
-        detailPaint.textSize = screenWidth * 0.045f
+        // Stars + Coins collected (1 Star = 1 Coin)
+        val starIcon = "\u2605"
+        val coinIcon = "\uD83E\uDE99"
+        detailPaint.textSize = screenWidth * 0.042f
         canvas.drawText(
-            "$starIcon $starsCollected Stars Collected",
+            "$starIcon $starsCollected Stars  |  $coinIcon $starsCollected Coins",
             centerX, screenHeight * 0.43f, detailPaint
+        )
+
+        // Wallet balance
+        detailPaint.textSize = screenWidth * 0.036f
+        val walletRs = String.format(java.util.Locale.US, "%.2f", GameData.totalCoins / Constants.COINS_PER_RUPEE.toFloat())
+        canvas.drawText(
+            "Wallet: $coinIcon ${GameData.totalCoins} Coins (\u20B9$walletRs)",
+            centerX, screenHeight * 0.475f, detailPaint
         )
 
         // Survival time
@@ -155,8 +164,9 @@ class GameOverScreen(
         val minutes = totalSeconds / 60
         val seconds = totalSeconds % 60
         val timeStr = String.format("Survived %d:%02d", minutes, seconds)
-        detailPaint.textSize = screenWidth * 0.04f
-        canvas.drawText(timeStr, centerX, screenHeight * 0.49f, detailPaint)
+        detailPaint.textSize = screenWidth * 0.038f
+        canvas.drawText(timeStr, centerX, screenHeight * 0.52f, detailPaint)
+
 
         // New high score indicator (pulsing gold)
         if (isNewHighScore) {
