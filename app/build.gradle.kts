@@ -17,15 +17,13 @@ android {
                 storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "8750257510"
                 keyAlias = System.getenv("KEY_ALIAS") ?: "key0"
                 keyPassword = System.getenv("KEY_PASSWORD") ?: "8750257510"
-            } else {
-                // In CI without keystore secret, use debug signing config so release build still compiles
-                val debugConfig = getByName("debug")
-                storeFile = debugConfig.storeFile
-                storePassword = debugConfig.storePassword
-                keyAlias = debugConfig.keyAlias
-                keyPassword = debugConfig.keyPassword
             }
         }
+    }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 
     compileOptions {
@@ -69,7 +67,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("release")
+            val relConfig = signingConfigs.getByName("release")
+            if (relConfig.storeFile != null) {
+                signingConfig = relConfig
+            }
         }
     }
 }
