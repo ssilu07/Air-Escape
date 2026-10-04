@@ -12,9 +12,9 @@ on:
         type: boolean
         default: true
       release_tag:
-        description: 'Tag for release (e.g. v1.2.0)'
+        description: 'Tag for release (e.g. v1.3.0)'
         required: false
-        default: 'v1.2.0'
+        default: 'v1.3.0'
 
 permissions:
   contents: write
@@ -78,7 +78,7 @@ jobs:
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.release_tag }}" ]]; then
             TAG_NAME="${{ inputs.release_tag }}"
           else
-            TAG_NAME="release-v1.2-$(date +'%Y%m%d-%H%M%S')"
+            TAG_NAME="release-v1.3-$(date +'%Y%m%d-%H%M%S')"
           fi
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
 
