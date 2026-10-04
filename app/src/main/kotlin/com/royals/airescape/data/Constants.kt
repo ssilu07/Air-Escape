@@ -138,7 +138,8 @@ object Constants {
     // Earning & Coins system (1 Star = 1 Coin)
     const val COINS_PER_STAR = 1                 // Each star collected gives 1 coin
     const val COINS_PER_RUPEE = 100              // 100 coins = 1 Rupee (₹1.00)
-    const val MIN_WITHDRAW_COINS = 500           // Minimum 500 coins required to withdraw (₹5.00)
+    const val MIN_WITHDRAW_RUPEES = 100          // Minimum payment is ₹100
+    const val MIN_WITHDRAW_COINS = MIN_WITHDRAW_RUPEES * COINS_PER_RUPEE // 10,000 coins (₹100)
     const val REWARD_AD_COINS = 20               // Extra coins for watching rewarded ad
     const val COIN_COLOR = 0xFFFFD700            // Gold coin color
 

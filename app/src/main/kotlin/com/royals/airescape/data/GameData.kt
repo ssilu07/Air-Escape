@@ -207,8 +207,8 @@ object GameData {
             return Pair(false, "Please enter a valid UPI ID (e.g. mobile@upi)")
         }
         if (coins < Constants.MIN_WITHDRAW_COINS) {
-            val minRs = Constants.MIN_WITHDRAW_COINS / Constants.COINS_PER_RUPEE
-            return Pair(false, "Minimum withdrawal is ${Constants.MIN_WITHDRAW_COINS} coins (₹$minRs)")
+            val minRs = Constants.MIN_WITHDRAW_RUPEES
+            return Pair(false, "Minimum withdrawal payment is ₹$minRs (${Constants.MIN_WITHDRAW_COINS} coins)")
         }
         if (totalCoins < coins) {
             return Pair(false, "Insufficient coin balance!")

@@ -34,8 +34,8 @@ class WalletScreen(private val surfaceView: GameSurfaceView) : Screen {
     private val upiInputRect = RectF()
     private val withdrawButtonRect = RectF()
 
-    // Quick withdrawal amount options (in coins)
-    private val amountOptions = listOf(500, 1000, 2500, 5000)
+    // Quick withdrawal amount options (in Rupees: ₹100, ₹150, ₹200, ₹250)
+    private val amountOptions = listOf(100, 150, 200, 250)
     private val amountRects = mutableListOf<RectF>()
     private var selectedCoinsIndex = 0
 
@@ -199,7 +199,7 @@ class WalletScreen(private val surfaceView: GameSurfaceView) : Screen {
         textPaint.textSize = screenWidth * 0.026f
         textPaint.isFakeBoldText = false
         canvas.drawText(
-            "1 Star = 1 Coin  \u2022  ${Constants.COINS_PER_RUPEE} Coins = \u20B91.00  \u2022  Min \u20B9${Constants.MIN_WITHDRAW_COINS / Constants.COINS_PER_RUPEE}",
+            "1 Star = 1 Coin  \u2022  ${Constants.COINS_PER_RUPEE} Coins = \u20B91.00  \u2022  Min Payment: \u20B9${Constants.MIN_WITHDRAW_RUPEES}",
             cx, balanceCardTop + balanceCardH * 0.90f, textPaint
         )
 
@@ -247,8 +247,8 @@ class WalletScreen(private val surfaceView: GameSurfaceView) : Screen {
         for (i in amountOptions.indices) {
             val rect = amountRects[i]
             val isSelected = (i == selectedCoinsIndex)
-            val coins = amountOptions[i]
-            val rs = coins / Constants.COINS_PER_RUPEE
+            val rs = amountOptions[i]
+            val coins = rs * Constants.COINS_PER_RUPEE
 
             if (isSelected) {
                 cardBgPaint.color = 0xFF00E676.toInt()
@@ -270,15 +270,16 @@ class WalletScreen(private val surfaceView: GameSurfaceView) : Screen {
             textPaint.color = if (isSelected) 0xFF00E676.toInt() else 0xFFFFFFFF.toInt()
             canvas.drawText("\u20B9$rs", rect.centerX(), rect.centerY() - rect.height() * 0.08f, textPaint)
 
-            textPaint.textSize = screenWidth * 0.024f
+            textPaint.textSize = screenWidth * 0.023f
             textPaint.color = if (isSelected) 0xFFB9F6CA.toInt() else 0xFFAAAAAA.toInt()
             textPaint.isFakeBoldText = false
-            canvas.drawText("${coins}\uD83E\uDE99", rect.centerX(), rect.centerY() + rect.height() * 0.32f, textPaint)
+            val coinFmt = java.text.NumberFormat.getIntegerInstance(Locale.US).format(coins)
+            canvas.drawText("${coinFmt}\uD83E\uDE99", rect.centerX(), rect.centerY() + rect.height() * 0.32f, textPaint)
         }
 
         // 5. Withdraw Button
-        val selectedCoins = amountOptions[selectedCoinsIndex]
-        val selectedRs = selectedCoins / Constants.COINS_PER_RUPEE
+        val selectedRs = amountOptions[selectedCoinsIndex]
+        val selectedCoins = selectedRs * Constants.COINS_PER_RUPEE
         val canWithdraw = GameData.totalCoins >= selectedCoins && currentUpiId.isNotBlank()
 
         val btnColor = if (canWithdraw) 0xFF00E676 else 0xFF455A64
@@ -406,13 +407,14 @@ class WalletScreen(private val surfaceView: GameSurfaceView) : Screen {
     }
 
     private fun confirmAndWithdraw() {
-        val coins = amountOptions[selectedCoinsIndex]
-        val rupee = coins / Constants.COINS_PER_RUPEE
+        val rupee = amountOptions[selectedCoinsIndex]
+        val coins = rupee * Constants.COINS_PER_RUPEE
 
         val act = surfaceView.context
+        val coinFmt = java.text.NumberFormat.getIntegerInstance(Locale.US).format(coins)
         AlertDialog.Builder(act)
             .setTitle("Confirm Withdrawal")
-            .setMessage("Withdraw \u20B9$rupee ($coins Coins) to UPI ID:\n\n$currentUpiId\n\nProcess withdrawal request?")
+            .setMessage("Withdraw \u20B9$rupee ($coinFmt Coins) to UPI ID:\n\n$currentUpiId\n\nProcess withdrawal request?")
             .setPositiveButton("CONFIRM") { _, _ ->
                 val result = GameData.submitWithdrawal(currentUpiId, coins)
                 statusMessage = result.second
@@ -459,13 +461,15 @@ class WalletScreen(private val surfaceView: GameSurfaceView) : Screen {
 
             // Withdraw button
             if (withdrawButtonRect.contains(x, y)) {
-                val coins = amountOptions[selectedCoinsIndex]
+                val rupee = amountOptions[selectedCoinsIndex]
+                val coins = rupee * Constants.COINS_PER_RUPEE
                 if (currentUpiId.isBlank() || !currentUpiId.contains("@")) {
                     surfaceView.post { showUpiInputDialog() }
                     return true
                 }
                 if (GameData.totalCoins < coins) {
-                    statusMessage = "Insufficient coins! You need $coins coins."
+                    val coinFmt = java.text.NumberFormat.getIntegerInstance(Locale.US).format(coins)
+                    statusMessage = "Insufficient coins! You need $coinFmt coins for \u20B9$rupee."
                     statusIsError = true
                     return true
                 }
