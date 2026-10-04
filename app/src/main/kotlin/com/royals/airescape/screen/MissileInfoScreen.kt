@@ -128,18 +128,23 @@ class MissileInfoScreen(private val surfaceView: GameSurfaceView) : Screen {
         screenWidth = sw
         screenHeight = sh
 
+        val safeTop = GameSurfaceView.safeInsetTop
+        val safeBottom = GameSurfaceView.safeInsetBottom + GameSurfaceView.bannerHeight
+        val usableH = (sh - safeTop - safeBottom).coerceAtLeast(sh * 0.70f)
+
         val padding = sw * 0.04f
         val backBtnW = sw * 0.22f
-        val backBtnH = sh * 0.045f
-        backButtonRect.set(padding, padding, padding + backBtnW, padding + backBtnH)
+        val backBtnH = (usableH * 0.052f).coerceIn(70f, 130f)
+        val topY = safeTop + usableH * 0.015f
+        backButtonRect.set(padding, topY, padding + backBtnW, topY + backBtnH)
 
         cardPadding = padding
         cardW = sw - padding * 2f
-        cardH = sh * 0.14f
-        cardGap = sh * 0.015f
-        topMargin = sh * 0.12f
+        cardH = usableH * 0.16f
+        cardGap = usableH * 0.018f
+        topMargin = topY + backBtnH + usableH * 0.035f
 
-        totalContentHeight = topMargin + missiles.size * (cardH + cardGap) + sh * 0.05f
+        totalContentHeight = topMargin + missiles.size * (cardH + cardGap) + safeBottom
 
         updateCardPositions()
         layoutDone = true

@@ -798,6 +798,8 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
 
     private fun renderHud(canvas: Canvas) {
         val padding = screenWidth * 0.03f
+        val safeTop = GameSurfaceView.safeInsetTop
+        val topY = safeTop + padding
         val hudTextSize = screenWidth * 0.045f
         val smallTextSize = screenWidth * 0.032f
 
@@ -805,7 +807,7 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         scorePaint.textSize = hudTextSize * 1.3f
         canvas.drawText(
             "${entityManager.score}",
-            screenWidth / 2f, padding + hudTextSize,
+            screenWidth / 2f, topY + hudTextSize,
             scorePaint
         )
 
@@ -813,7 +815,7 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         starHudPaint.textSize = smallTextSize
         val starText = "${entityManager.starsCollected}"
         val starTextX = screenWidth - padding
-        val starTextY = padding + smallTextSize
+        val starTextY = topY + smallTextSize
 
         val starIconX = starTextX - starHudPaint.measureText(starText) - smallTextSize * 0.8f
         Renderer.drawStar(
@@ -836,19 +838,18 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         )
         canvas.drawText(coinText, starTextX, coinTextY, starHudPaint)
 
-
         // Survival time (top left)
         val totalSeconds = entityManager.survivalTime.toInt()
         val minutes = totalSeconds / 60
         val seconds = totalSeconds % 60
         val timeStr = String.format("%d:%02d", minutes, seconds)
         timePaint.textSize = smallTextSize
-        canvas.drawText(timeStr, padding, padding + smallTextSize, timePaint)
+        canvas.drawText(timeStr, padding, topY + smallTextSize, timePaint)
 
         // Pause button (top-left, below time)
         val pauseSize = hudTextSize * 1.2f
         val pauseX = padding
-        val pauseY = padding + smallTextSize + padding * 0.5f
+        val pauseY = topY + smallTextSize + padding * 0.5f
         pauseButtonRect.set(pauseX, pauseY, pauseX + pauseSize, pauseY + pauseSize)
         // Draw pause icon (two vertical bars)
         val barW = pauseSize * 0.25f

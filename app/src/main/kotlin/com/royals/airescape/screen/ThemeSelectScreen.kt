@@ -99,19 +99,24 @@ class ThemeSelectScreen(private val surfaceView: GameSurfaceView) : Screen {
         screenWidth = sw
         screenHeight = sh
 
+        val safeTop = GameSurfaceView.safeInsetTop
+        val safeBottom = GameSurfaceView.safeInsetBottom + GameSurfaceView.bannerHeight
+        val usableH = (sh - safeTop - safeBottom).coerceAtLeast(sh * 0.70f)
+
         val padding = sw * 0.04f
         val backBtnW = sw * 0.22f
-        val backBtnH = sh * 0.045f
-        backButtonRect.set(padding, padding, padding + backBtnW, padding + backBtnH)
+        val backBtnH = (usableH * 0.052f).coerceIn(70f, 130f)
+        val topY = safeTop + usableH * 0.015f
+        backButtonRect.set(padding, topY, padding + backBtnW, topY + backBtnH)
 
         // 2 columns x 3 rows grid
-        val gridTop = sh * 0.12f
+        val gridTop = topY + backBtnH + usableH * 0.035f
         val cols = 2
         val rows = 3
         val colGap = sw * 0.04f
-        val rowGap = sh * 0.02f
+        val rowGap = usableH * 0.02f
         val cardW = (sw - padding * 2f - colGap) / cols
-        val cardH = (sh * 0.72f - rowGap * 2f) / rows
+        val cardH = (usableH * 0.78f - rowGap * 2f) / rows
 
         for (i in themes.indices) {
             val c = i % cols

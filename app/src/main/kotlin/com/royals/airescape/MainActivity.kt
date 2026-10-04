@@ -27,6 +27,34 @@ class MainActivity : Activity() {
 
         setContentView(rootLayout)
 
+        val density = resources.displayMetrics.density
+        GameSurfaceView.safeInsetTop = 44f * density
+        GameSurfaceView.safeInsetBottom = 48f * density
+        GameSurfaceView.bannerHeight = 50f * density
+
+        rootLayout.setOnApplyWindowInsetsListener { _, insets ->
+            val topInset: Int
+            val bottomInset: Int
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val sysInsets = insets.getInsets(
+                    WindowInsets.Type.statusBars() or
+                    WindowInsets.Type.displayCutout() or
+                    WindowInsets.Type.navigationBars()
+                )
+                topInset = sysInsets.top
+                bottomInset = sysInsets.bottom
+            } else {
+                @Suppress("DEPRECATION")
+                topInset = insets.systemWindowInsetTop
+                @Suppress("DEPRECATION")
+                bottomInset = insets.systemWindowInsetBottom
+            }
+            GameSurfaceView.safeInsetTop = topInset.toFloat().coerceAtLeast(44f * density)
+            GameSurfaceView.safeInsetBottom = bottomInset.toFloat().coerceAtLeast(48f * density)
+            AdManager.updateBannerBottomMargin()
+            insets
+        }
+
         // Initialize AdMob and create banner
         AdManager.init(this)
         AdManager.createBanner(rootLayout)

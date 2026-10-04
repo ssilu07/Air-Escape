@@ -99,34 +99,41 @@ class WalletScreen(private val surfaceView: GameSurfaceView) : Screen {
         screenWidth = sw
         screenHeight = sh
 
+        val safeTop = GameSurfaceView.safeInsetTop
+        val safeBottom = GameSurfaceView.safeInsetBottom + GameSurfaceView.bannerHeight
+        val usableH = (sh - safeTop - safeBottom).coerceAtLeast(sh * 0.70f)
+
         val padding = sw * 0.05f
-        val topBarH = sh * 0.07f
 
-        // Back button (top left)
+        // 1. Back button (safely below status bar & cutout)
         val backBtnW = sw * 0.24f
-        val backBtnH = sh * 0.045f
-        backButtonRect.set(padding, padding, padding + backBtnW, padding + backBtnH)
+        val backBtnH = (usableH * 0.052f).coerceIn(70f, 130f)
+        val topY = safeTop + usableH * 0.015f
+        backButtonRect.set(padding, topY, padding + backBtnW, topY + backBtnH)
 
-        // UPI input field rect
-        val upiTop = sh * 0.365f
-        val upiH = sh * 0.065f
+        // 2. UPI input field rect
+        val balanceCardTop = topY + backBtnH + usableH * 0.045f
+        val balanceCardH = usableH * 0.21f
+
+        val upiTop = balanceCardTop + balanceCardH + usableH * 0.035f
+        val upiH = usableH * 0.075f
         upiInputRect.set(padding, upiTop, sw - padding, upiTop + upiH)
 
-        // Amount chips (row of 4)
+        // 3. Amount chips (row of 4)
         amountRects.clear()
-        val chipsTop = upiTop + upiH + sh * 0.045f
+        val chipsTop = upiTop + upiH + usableH * 0.042f
         val chipGap = sw * 0.02f
         val chipW = (sw - padding * 2f - chipGap * 3f) / 4f
-        val chipH = sh * 0.052f
+        val chipH = usableH * 0.072f
 
         for (i in amountOptions.indices) {
             val left = padding + i * (chipW + chipGap)
             amountRects.add(RectF(left, chipsTop, left + chipW, chipsTop + chipH))
         }
 
-        // Withdraw button
-        val withdrawTop = chipsTop + chipH + sh * 0.025f
-        val withdrawH = sh * 0.06f
+        // 4. Withdraw button
+        val withdrawTop = chipsTop + chipH + usableH * 0.028f
+        val withdrawH = usableH * 0.075f
         withdrawButtonRect.set(padding, withdrawTop, sw - padding, withdrawTop + withdrawH)
 
         layoutDone = true
@@ -146,6 +153,9 @@ class WalletScreen(private val surfaceView: GameSurfaceView) : Screen {
 
         val padding = screenWidth * 0.05f
         val cx = screenWidth / 2f
+        val safeTop = GameSurfaceView.safeInsetTop
+        val safeBottom = GameSurfaceView.safeInsetBottom + GameSurfaceView.bannerHeight
+        val usableH = (screenHeight - safeTop - safeBottom).coerceAtLeast(screenHeight * 0.70f)
 
         // 1. Top bar: Back Button & Title
         Renderer.drawButton(
@@ -163,11 +173,11 @@ class WalletScreen(private val surfaceView: GameSurfaceView) : Screen {
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.isFakeBoldText = false
         val syncStatus = if (com.royals.airescape.data.SupabaseClient.isSyncing) "☁️ Syncing..." else "☁️ Supabase Cloud"
-        canvas.drawText("ID: ${GameData.playerId}  •  $syncStatus", cx, backButtonRect.bottom + screenHeight * 0.016f, textPaint)
+        canvas.drawText("ID: ${GameData.playerId}  •  $syncStatus", cx, backButtonRect.bottom + usableH * 0.022f, textPaint)
 
         // 2. Balance Card (top section)
-        val balanceCardTop = backButtonRect.bottom + screenHeight * 0.025f
-        val balanceCardH = screenHeight * 0.185f
+        val balanceCardTop = backButtonRect.bottom + usableH * 0.045f
+        val balanceCardH = usableH * 0.21f
         val balanceRect = RectF(padding, balanceCardTop, screenWidth - padding, balanceCardTop + balanceCardH)
 
         canvas.drawRoundRect(balanceRect, 20f, 20f, cardBgPaint)
@@ -182,7 +192,7 @@ class WalletScreen(private val surfaceView: GameSurfaceView) : Screen {
 
         // Big Coin Count
         textPaint.color = Constants.COIN_COLOR.toInt()
-        textPaint.textSize = screenWidth * 0.085f
+        textPaint.textSize = screenWidth * 0.082f
         textPaint.isFakeBoldText = true
         val coinStr = "\uD83E\uDE99 ${GameData.totalCoins} COINS"
         canvas.drawText(coinStr, cx, balanceCardTop + balanceCardH * 0.52f, textPaint)
@@ -190,13 +200,13 @@ class WalletScreen(private val surfaceView: GameSurfaceView) : Screen {
         // Cash Value
         val rupeeVal = GameData.totalCoins.toFloat() / Constants.COINS_PER_RUPEE.toFloat()
         textPaint.color = 0xFF00E676.toInt()
-        textPaint.textSize = screenWidth * 0.048f
+        textPaint.textSize = screenWidth * 0.046f
         val cashStr = "= \u20B9${String.format(Locale.US, "%.2f", rupeeVal)} INR"
         canvas.drawText(cashStr, cx, balanceCardTop + balanceCardH * 0.74f, textPaint)
 
         // Rate note
         textPaint.color = 0xFF888888.toInt()
-        textPaint.textSize = screenWidth * 0.026f
+        textPaint.textSize = screenWidth * 0.025f
         textPaint.isFakeBoldText = false
         canvas.drawText(
             "1 Star = 1 Coin  \u2022  ${Constants.COINS_PER_RUPEE} Coins = \u20B91.00  \u2022  Min Payment: \u20B9${Constants.MIN_WITHDRAW_RUPEES}",
@@ -208,7 +218,7 @@ class WalletScreen(private val surfaceView: GameSurfaceView) : Screen {
         textPaint.textSize = screenWidth * 0.034f
         textPaint.textAlign = Paint.Align.LEFT
         textPaint.isFakeBoldText = true
-        canvas.drawText("WITHDRAWAL UPI ID / PAYTM", padding, upiInputRect.top - screenHeight * 0.01f, textPaint)
+        canvas.drawText("WITHDRAWAL UPI ID / PAYTM", padding, upiInputRect.top - usableH * 0.012f, textPaint)
 
         canvas.drawRoundRect(upiInputRect, 14f, 14f, subCardBgPaint)
 
@@ -307,35 +317,42 @@ class WalletScreen(private val surfaceView: GameSurfaceView) : Screen {
     }
 
     private fun renderTransactionHistory(canvas: Canvas, padding: Float, startY: Float) {
+        val safeBottom = GameSurfaceView.safeInsetBottom + GameSurfaceView.bannerHeight
+        val maxAllowedBottom = screenHeight - safeBottom - screenHeight * 0.015f
+        if (startY >= maxAllowedBottom - screenHeight * 0.04f) return
+
         val history = GameData.getWithdrawalHistory()
         val cx = screenWidth / 2f
 
         textPaint.color = 0xFFCCCCCC.toInt()
-        textPaint.textSize = screenWidth * 0.034f
+        textPaint.textSize = screenWidth * 0.033f
         textPaint.textAlign = Paint.Align.LEFT
         textPaint.isFakeBoldText = true
         canvas.drawText("RECENT WITHDRAWALS", padding, startY, textPaint)
 
-        var rowY = startY + screenHeight * 0.025f
+        var rowY = startY + screenHeight * 0.022f
 
         if (history.isEmpty()) {
             textPaint.color = 0xFF777777.toInt()
-            textPaint.textSize = screenWidth * 0.030f
+            textPaint.textSize = screenWidth * 0.029f
             textPaint.textAlign = Paint.Align.CENTER
             textPaint.isFakeBoldText = false
-            canvas.drawText("No withdrawal requests yet. Collect stars to earn!", cx, rowY + screenHeight * 0.03f, textPaint)
+            canvas.drawText("No withdrawal requests yet. Collect stars to earn!", cx, rowY + screenHeight * 0.025f, textPaint)
             return
         }
 
         val df = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault())
 
         for (req in history.take(3)) {
-            val rowRect = RectF(padding, rowY, screenWidth - padding, rowY + screenHeight * 0.052f)
+            val rowH = screenHeight * 0.048f
+            if (rowY + rowH > maxAllowedBottom) break
+
+            val rowRect = RectF(padding, rowY, screenWidth - padding, rowY + rowH)
             canvas.drawRoundRect(rowRect, 10f, 10f, subCardBgPaint)
 
             // Amount & UPI ID
             textPaint.color = 0xFFFFFFFF.toInt()
-            textPaint.textSize = screenWidth * 0.032f
+            textPaint.textSize = screenWidth * 0.031f
             textPaint.textAlign = Paint.Align.LEFT
             textPaint.isFakeBoldText = true
             val dateStr = df.format(Date(req.timestamp))
@@ -347,7 +364,7 @@ class WalletScreen(private val surfaceView: GameSurfaceView) : Screen {
             )
 
             textPaint.color = 0xFF888888.toInt()
-            textPaint.textSize = screenWidth * 0.024f
+            textPaint.textSize = screenWidth * 0.023f
             textPaint.isFakeBoldText = false
             canvas.drawText(
                 dateStr,
@@ -360,7 +377,7 @@ class WalletScreen(private val surfaceView: GameSurfaceView) : Screen {
             val isPending = req.status == "PENDING"
             val pillColor = if (isPending) 0xFFFFD740.toInt() else 0xFF00E676.toInt()
             textPaint.color = pillColor
-            textPaint.textSize = screenWidth * 0.028f
+            textPaint.textSize = screenWidth * 0.027f
             textPaint.textAlign = Paint.Align.RIGHT
             textPaint.isFakeBoldText = true
             canvas.drawText(
@@ -370,7 +387,7 @@ class WalletScreen(private val surfaceView: GameSurfaceView) : Screen {
                 textPaint
             )
 
-            rowY += screenHeight * 0.06f
+            rowY += rowH + screenHeight * 0.010f
         }
     }
 

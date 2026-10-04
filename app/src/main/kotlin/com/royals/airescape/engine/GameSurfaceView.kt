@@ -34,6 +34,20 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
         @Volatile
         var screenHeight: Int = 0
             private set
+
+        @Volatile
+        var safeInsetTop: Float = 0f
+
+        @Volatile
+        var safeInsetBottom: Float = 0f
+
+        @Volatile
+        var bannerHeight: Float = 0f
+
+        fun getUsableTop(): Float = safeInsetTop
+
+        fun getUsableBottom(withBanner: Boolean = false): Float =
+            screenHeight.toFloat() - safeInsetBottom - (if (withBanner) bannerHeight else 0f)
     }
 
     // ---- Public API ----

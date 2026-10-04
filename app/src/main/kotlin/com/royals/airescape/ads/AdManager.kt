@@ -41,22 +41,38 @@ object AdManager {
 
     // ── Banner ───────────────────────────────────────────────────────
 
+    val isBannerVisible: Boolean
+        get() = bannerAdView?.visibility == View.VISIBLE
+
     fun createBanner(container: FrameLayout): AdView {
         val adView = AdView(container.context)
         adView.setAdSize(AdSize.BANNER)
         adView.adUnitId = BANNER_ID
         bannerAdView = adView
 
+        val density = container.context.resources.displayMetrics.density
+        com.royals.airescape.engine.GameSurfaceView.bannerHeight = 50f * density
+
         val params = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT
         ).apply {
             gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL
+            bottomMargin = com.royals.airescape.engine.GameSurfaceView.safeInsetBottom.toInt()
         }
         container.addView(adView, params)
         adView.loadAd(AdRequest.Builder().build())
         adView.visibility = View.GONE
         return adView
+    }
+
+    fun updateBannerBottomMargin() {
+        val view = bannerAdView ?: return
+        activity?.runOnUiThread {
+            val params = view.layoutParams as? FrameLayout.LayoutParams ?: return@runOnUiThread
+            params.bottomMargin = com.royals.airescape.engine.GameSurfaceView.safeInsetBottom.toInt()
+            view.layoutParams = params
+        }
     }
 
     fun showBanner() {

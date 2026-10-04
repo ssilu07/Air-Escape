@@ -106,15 +106,19 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
         screenWidth = sw
         screenHeight = sh
 
+        val safeTop = GameSurfaceView.safeInsetTop
+        val safeBottom = GameSurfaceView.safeInsetBottom + GameSurfaceView.bannerHeight
+        val usableH = (sh - safeTop - safeBottom).coerceAtLeast(sh * 0.70f)
+
         val btnW = sw * 0.7f
-        val btnH = sh * 0.048f
+        val btnH = usableH * 0.055f
         val centerX = sw / 2f
-        val gap = sh * 0.012f
+        val gap = usableH * 0.014f
         val padding = sw * 0.06f
         val halfBtnW = (btnW - gap) / 2f
 
         // Mode buttons (NORMAL / HARD) - horizontal row
-        val modeTop = sh * 0.30f
+        val modeTop = safeTop + usableH * 0.28f
         val modeH = btnH * 0.85f
         val modeLeft = centerX - btnW / 2f
         normalModeRect.set(modeLeft, modeTop, modeLeft + halfBtnW, modeTop + modeH)
@@ -194,8 +198,11 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
         renderBackgroundMissiles(canvas)
 
         // Title with subtle glow
+        val safeTop = GameSurfaceView.safeInsetTop
+        val safeBottom = GameSurfaceView.safeInsetBottom + GameSurfaceView.bannerHeight
+        val usableH = (screenHeight - safeTop - safeBottom).coerceAtLeast(screenHeight * 0.70f)
         val titleSize = screenWidth * 0.12f
-        val titleY = screenHeight * 0.14f
+        val titleY = safeTop + usableH * 0.12f
         val glowOffset = sin(titleTimer * 2f) * 2f
 
         titleGlowPaint.textSize = titleSize + 4f
