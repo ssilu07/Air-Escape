@@ -76,11 +76,11 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation("com.airbnb.android:lottie:6.4.0")
-    implementation("com.google.android.gms:play-services-ads:23.6.0")
-    implementation("com.google.android.gms:play-services-games-v2:20.1.2")
+    implementation("androidx.core:core-ktx:1.19.1")
+    implementation("androidx.appcompat:appcompat:1.8.0")
+    implementation("com.airbnb.android:lottie:6.7.1")
+    implementation("com.google.android.gms:play-services-ads:25.5.0")
+    implementation("com.google.android.gms:play-services-games-v2:22.1.0")
     implementation("com.google.android.play:review:2.0.2")
     implementation("com.google.android.play:review-ktx:2.0.2")
 }

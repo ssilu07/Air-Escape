@@ -15,6 +15,21 @@ on:
         description: 'Tag for release (e.g. v1.3.0)'
         required: false
         default: 'v1.3.0'
+      upload_play_store:
+        description: 'Upload AAB to Google Play'
+        required: true
+        type: boolean
+        default: true
+      play_track:
+        description: 'Play Store Track'
+        required: true
+        type: choice
+        default: 'internal'
+        options:
+          - internal
+          - alpha
+          - beta
+          - production
 
 permissions:
   contents: write
@@ -113,3 +128,29 @@ jobs:
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check Play Store Deployment Configuration
+        id: play_check
+        run: |
+          if [ -n "${{ secrets.PLAY_STORE_JSON_KEY }}" ]; then
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.upload_play_store }}" = "false" ]; then
+              echo "deploy=false" >> $GITHUB_OUTPUT
+              echo "Play Store upload disabled by user input."
+            else
+              echo "deploy=true" >> $GITHUB_OUTPUT
+              echo "Play Store upload enabled."
+            fi
+          else
+            echo "deploy=false" >> $GITHUB_OUTPUT
+            echo "::warning ::PLAY_STORE_JSON_KEY secret not found in GitHub Secrets. Skipping Play Store upload."
+          fi
+
+      - name: Deploy to Google Play Console
+        if: steps.play_check.outputs.deploy == 'true'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_JSON_KEY }}
+          packageName: com.royals.airescape
+          releaseFiles: app/build/outputs/bundle/release/*.aab
+          track: ${{ inputs.play_track || 'internal' }}
+          status: completed
