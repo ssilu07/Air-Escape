@@ -2,8 +2,10 @@ package com.royals.airescape.screen
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Shader
 import android.view.MotionEvent
 import androidx.core.content.ContextCompat
 import com.airbnb.lottie.LottieCompositionFactory
@@ -35,7 +37,15 @@ import kotlin.math.sin
  * Sky-blue background with scrolling clouds. Plane icon from drawable.
  * Helicopter sound loops during gameplay.
  */
-class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
+class GameScreen(
+    private val surfaceView: GameSurfaceView,
+    val levelConfig: com.royals.airescape.level.LevelConfig? = null
+) : Screen {
+
+    val effectiveLevelConfig: com.royals.airescape.level.LevelConfig? =
+        levelConfig ?: if (GameData.isLevelMode) com.royals.airescape.level.LevelManager.getLevel(GameData.selectedLevel) else null
+
+    private var winDelay = 0f
 
     // ── Engine pieces ────────────────────────────────────────────────
     private lateinit var entityManager: EntityManager
@@ -76,13 +86,18 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
     }
 
     init {
-        val themeId = GameData.selectedTheme
+        val themeId = effectiveLevelConfig?.themeId ?: GameData.selectedTheme
         currentTheme = com.royals.airescape.data.ThemeConfig.THEMES.firstOrNull { it.id == themeId }
             ?: com.royals.airescape.data.ThemeConfig.THEMES[0]
         skyColor = currentTheme.skyColor.toInt()
         cloudPaint.color = currentTheme.cloudColor.toInt()
         cloudPaint.alpha = currentTheme.cloudAlpha
     }
+
+    // ── Dynamic Background Shaders ────────────────────────────────────
+    private val bgGradientPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var lastBgHeight = 0f
+    private var bgShader: LinearGradient? = null
 
     // ── HUD paints ───────────────────────────────────────────────────
     private val scorePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -252,7 +267,11 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
     }
 
     override fun onBackPressed(): Boolean {
-        surfaceView.setScreen(MenuScreen(surfaceView))
+        if (effectiveLevelConfig != null) {
+            surfaceView.setScreen(LevelSelectScreen(surfaceView))
+        } else {
+            if (effectiveLevelConfig != null) surfaceView.setScreen(LevelSelectScreen(surfaceView)) else surfaceView.setScreen(MenuScreen(surfaceView))
+        }
         return true
     }
 
@@ -273,6 +292,25 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         entityManager.player.inputDirection = dir
 
         entityManager.update(dt)
+
+        if (entityManager.levelWon) {
+            winDelay += dt
+            if (winDelay >= 0.75f && effectiveLevelConfig != null) {
+                SoundManager.gameActive = false
+                stopHelicopterSound()
+                surfaceView.setScreen(
+                    LevelCompleteScreen(
+                        surfaceView,
+                        effectiveLevelConfig,
+                        entityManager.starsCollected,
+                        entityManager.score,
+                        !entityManager.playerHitTaken,
+                        entityManager.survivalTime
+                    )
+                )
+                return
+            }
+        }
 
         // Tutorial progression (first game only)
         if (!GameData.tutorialShown && tutorialStep < tutorialMessages.size) {
@@ -331,8 +369,8 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
     override fun render(canvas: Canvas) {
         if (!layoutDone) return
 
-        // Sky background
-        canvas.drawColor(skyColor)
+        // Dynamic gradient sky background
+        renderBackground(canvas)
 
         // Scrolling clouds
         renderClouds(canvas)
@@ -376,7 +414,7 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
                     return true
                 }
                 if (pauseMenuRect.contains(x, y)) {
-                    surfaceView.setScreen(MenuScreen(surfaceView))
+                    if (effectiveLevelConfig != null) surfaceView.setScreen(LevelSelectScreen(surfaceView)) else surfaceView.setScreen(MenuScreen(surfaceView))
                     return true
                 }
             }
@@ -400,7 +438,7 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
                     return true
                 }
                 if (retryButtonRect.contains(x, y)) {
-                    surfaceView.setScreen(GameScreen(surfaceView))
+                    surfaceView.setScreen(GameScreen(surfaceView, levelConfig = effectiveLevelConfig))
                     return true
                 }
                 if (rateButtonRect.contains(x, y)) {
@@ -408,7 +446,7 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
                     return true
                 }
                 if (menuButtonRect.contains(x, y)) {
-                    surfaceView.setScreen(MenuScreen(surfaceView))
+                    if (effectiveLevelConfig != null) surfaceView.setScreen(LevelSelectScreen(surfaceView)) else surfaceView.setScreen(MenuScreen(surfaceView))
                     return true
                 }
             }
@@ -450,7 +488,8 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
             screenHeight = screenHeight,
             planeType = planeConfig.id % 3,
             planeColor = planeConfig.colorPrimary.toInt(),
-            hardMode = hardMode
+            hardMode = hardMode,
+            levelConfig = effectiveLevelConfig
         )
 
         // Load plane bitmap
@@ -553,122 +592,119 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
     // ── Game-over overlay ────────────────────────────────────────────
 
     private fun renderGameOverOverlay(canvas: Canvas) {
-        // Semi-transparent overlay (light so sky background shows through)
         canvas.drawRect(0f, 0f, screenWidth, screenHeight, overlayPaint)
-
         val cx = screenWidth / 2f
+        val enter = (gameOverAnimTimer / 0.45f).coerceIn(0f, 1f)
+        val ease = 1f - (1f - enter) * (1f - enter)
 
-        // "YOUR SCORE" title
-        goTitlePaint.textSize = screenWidth * 0.09f
-        canvas.drawText("YOUR SCORE", cx, screenHeight * 0.25f, goTitlePaint)
+        // ── Result card ──────────────────────────────────────────────
+        val cardW = screenWidth * 0.88f
+        val cardTop = screenHeight * 0.10f + (1f - ease) * screenHeight * 0.08f
+        val cardBottom = screenHeight * 0.60f + (1f - ease) * screenHeight * 0.08f
+        val card = RectF(cx - cardW / 2f, cardTop, cx + cardW / 2f, cardBottom)
+        val accent = if (isNewHighScore) 0xFFFFD700.toInt() else 0xFF00E5FF.toInt()
+        canvas.save()
+        canvas.saveLayerAlpha(0f, 0f, screenWidth, screenHeight, (ease * 255).toInt())
+        Renderer.drawGlassPanel(canvas, card, accent, 32f)
+        val ch = card.height()
 
-        // Big score number
-        goScorePaint.textSize = screenWidth * 0.18f
-        canvas.drawText("${entityManager.score}", cx, screenHeight * 0.36f, goScorePaint)
+        if (effectiveLevelConfig != null) {
+            val pct = (entityManager.levelProgress * 100).toInt()
+            val curM = (effectiveLevelConfig.distanceMeters * entityManager.levelProgress).toInt()
+            Renderer.drawShadowText(canvas, "LEVEL FAILED ($pct%)", cx, card.top + ch * 0.08f, screenWidth * 0.055f, 0xFFFF5252.toInt(), Paint.Align.CENTER)
+            Renderer.drawShadowText(canvas, "Reached $curM / ${effectiveLevelConfig.distanceMeters}m", cx, card.top + ch * 0.13f, screenWidth * 0.032f, 0xFFFFB74D.toInt(), Paint.Align.CENTER)
+        } else {
+            Renderer.drawShadowText(canvas, "MISSION OVER", cx, card.top + ch * 0.11f, screenWidth * 0.05f, 0xFFFF8A80.toInt(), Paint.Align.CENTER)
+        }
 
-        // Stars + Coins collected (1 Star = 1 Coin)
-        goDetailPaint.textSize = screenWidth * 0.042f
-        val starText = "\u2605 +${entityManager.starsCollected} Stars  |  \uD83E\uDE99 +${entityManager.starsCollected} Coins"
-        canvas.drawText(starText, cx, screenHeight * 0.44f, goDetailPaint)
+        // Big score with count-up
+        val shown = (entityManager.score * ease).toInt()
+        Renderer.drawShadowText(canvas, "$shown", cx, card.top + ch * 0.30f, screenWidth * 0.17f, 0xFFFFFFFF.toInt(), Paint.Align.CENTER)
+        Renderer.drawShadowText(canvas, "SCORE", cx, card.top + ch * 0.37f, screenWidth * 0.032f, 0xFF7FDBFF.toInt(), Paint.Align.CENTER)
 
-        // Survival time
-        val totalSec = entityManager.survivalTime.toInt()
-        val min = totalSec / 60
-        val sec = totalSec % 60
-        val timeText = String.format("\u23F1  +%d:%02d", min, sec)
-        canvas.drawText(timeText, cx, screenHeight * 0.49f, goDetailPaint)
-
-        // Divider line
-        val divW = screenWidth * 0.45f
-        canvas.drawLine(cx - divW / 2f, screenHeight * 0.53f, cx + divW / 2f, screenHeight * 0.53f, goDividerPaint)
-
-        // Total stars & Wallet balance
-        goDetailPaint.textSize = screenWidth * 0.038f
-        val walletRs = String.format(java.util.Locale.US, "%.2f", GameData.totalCoins / Constants.COINS_PER_RUPEE.toFloat())
-        val totalsText = "\u2605 ${GameData.totalStars} Stars  \u2022  \uD83E\uDE99 ${GameData.totalCoins} Coins (\u20B9$walletRs)"
-        canvas.drawText(totalsText, cx, screenHeight * 0.575f, goDetailPaint)
-
-
-        // New high score
         if (isNewHighScore) {
-            val pulse = 0.7f + 0.3f * sin(gameOverAnimTimer * 4f).toFloat()
-            goHighScorePaint.textSize = screenWidth * 0.055f
-            goHighScorePaint.alpha = (pulse * 255).toInt().coerceIn(0, 255)
-            canvas.drawText("NEW HIGH SCORE!", cx, screenHeight * 0.63f, goHighScorePaint)
+            val pulse = 0.75f + 0.25f * sin(gameOverAnimTimer * 5f).toFloat()
+            val badgeW = screenWidth * 0.5f
+            val badgeH = screenWidth * 0.075f
+            val by = card.top + ch * 0.46f
+            val badge = RectF(cx - badgeW / 2f, by - badgeH / 2f, cx + badgeW / 2f, by + badgeH / 2f)
+            Renderer.drawGlassPanel(canvas, badge, 0xFFFFD700.toInt(), badgeH / 2f, 0xFF6B4E00.toInt(), 0xFF3A2A00.toInt())
+            Renderer.drawShadowText(canvas, "\uD83C\uDFC6 NEW HIGH SCORE", cx, by + badgeH * 0.18f, badgeH * 0.45f, 0xFFFFD700.toInt(), Paint.Align.CENTER, (pulse * 255).toInt())
+        } else {
+            Renderer.drawShadowText(canvas, "\uD83C\uDFC6 BEST ${GameData.highScore}", cx, card.top + ch * 0.47f, screenWidth * 0.04f, 0xFFFFD700.toInt(), Paint.Align.CENTER)
         }
 
-        // ── Daily Challenges ─────────────────────────────────────────
+        // Stat tiles: stars | coins | time
+        val totalSec = entityManager.survivalTime.toInt()
+        val stats = listOf(
+            Triple("\u2605", "${entityManager.starsCollected}", "STARS"),
+            Triple("\uD83E\uDE99", "+${entityManager.starsCollected}", "COINS"),
+            Triple("\u23F1", String.format("%d:%02d", totalSec / 60, totalSec % 60), "TIME")
+        )
+        val tileGap = screenWidth * 0.02f
+        val tileW = (cardW - tileGap * 4f) / 3f
+        val tileH = ch * 0.2f
+        val tileTop = card.top + ch * 0.56f
+        stats.forEachIndexed { i, (icon, value, label) ->
+            val l = card.left + tileGap + i * (tileW + tileGap)
+            val tile = RectF(l, tileTop, l + tileW, tileTop + tileH)
+            Renderer.drawGlassPanel(canvas, tile, 0x55FFFFFF, 16f, 0x66233358, 0x66101A33)
+            Renderer.drawShadowText(canvas, "$icon $value", tile.centerX(), tile.top + tileH * 0.52f, screenWidth * 0.043f, 0xFFFFFFFF.toInt(), Paint.Align.CENTER)
+            Renderer.drawShadowText(canvas, label, tile.centerX(), tile.bottom - tileH * 0.16f, screenWidth * 0.024f, 0xFF90A4AE.toInt(), Paint.Align.CENTER)
+        }
+
+        // Wallet line
+        val walletRs = String.format(java.util.Locale.US, "%.2f", GameData.totalCoins / Constants.COINS_PER_RUPEE.toFloat())
+        Renderer.drawShadowText(
+            canvas, "Wallet  \uD83E\uDE99 ${GameData.totalCoins}  (\u20B9$walletRs)",
+            cx, card.top + ch * 0.90f, screenWidth * 0.036f, 0xFFB0BEC5.toInt(), Paint.Align.CENTER
+        )
+
+        // ── Daily challenges ─────────────────────────────────────────
         val challenges = DailyChallengeManager.getTodayChallenges()
+        var nextTop = card.bottom + screenHeight * 0.02f
         if (challenges.isNotEmpty()) {
-            var challengeY = screenHeight * 0.60f
-            goDetailPaint.textSize = screenWidth * 0.032f
-            goDetailPaint.textAlign = Paint.Align.CENTER
-
-            Renderer.drawText(
-                canvas, "DAILY CHALLENGES",
-                cx, challengeY,
-                size = screenWidth * 0.035f,
-                color = Constants.STAR_COLOR,
-                align = Paint.Align.CENTER
-            )
-            challengeY += screenWidth * 0.045f
-
-            for (challenge in challenges) {
-                val check = if (challenge.isCompleted) "\u2713 " else ""
-                val text = "$check${challenge.description} (${challenge.progress}/${challenge.target})"
-                val color = if (challenge.isCompleted) 0xFF00E676 else 0xFF5D4037
-                Renderer.drawText(
-                    canvas, text,
-                    cx, challengeY,
-                    size = screenWidth * 0.028f,
-                    color = color,
-                    align = Paint.Align.CENTER
-                )
-                if (challenge.isCompleted) {
-                    Renderer.drawText(
-                        canvas, "+${challenge.rewardStars}\u2605",
-                        cx + screenWidth * 0.35f, challengeY,
-                        size = screenWidth * 0.025f,
-                        color = Constants.STAR_COLOR,
-                        align = Paint.Align.LEFT
-                    )
-                }
-                challengeY += screenWidth * 0.04f
+            val rowH = screenWidth * 0.075f
+            val panelH = rowH * (challenges.size + 1) + 8f
+            val panel = RectF(cx - cardW / 2f, nextTop, cx + cardW / 2f, nextTop + panelH)
+            Renderer.drawGlassPanel(canvas, panel, 0xFFFFD700.toInt(), 20f)
+            Renderer.drawShadowText(canvas, "DAILY CHALLENGES", cx, panel.top + rowH * 0.75f, screenWidth * 0.031f, 0xFFFFD700.toInt(), Paint.Align.CENTER)
+            challenges.forEachIndexed { i, c ->
+                val y = panel.top + rowH * (i + 1) + rowH * 0.7f
+                val col = if (c.isCompleted) 0xFF00E676.toInt() else 0xFFE0E0E0.toInt()
+                val mark = if (c.isCompleted) "\u2713 " else ""
+                Renderer.drawShadowText(canvas, "$mark${c.description}", panel.left + 16f, y, screenWidth * 0.027f, col)
+                val frac = (c.progress.toFloat() / c.target.coerceAtLeast(1)).coerceIn(0f, 1f)
+                val bar = RectF(panel.right - screenWidth * 0.26f, y - screenWidth * 0.014f, panel.right - 16f - screenWidth * 0.09f, y - screenWidth * 0.004f + screenWidth * 0.004f)
+                Renderer.drawProgressPill(canvas, bar, frac, if (c.isCompleted) 0xFF00E676.toInt() else 0xFF00B0FF.toInt())
+                Renderer.drawShadowText(canvas, if (c.isCompleted) "+${c.rewardStars}\u2605" else "${c.progress}/${c.target}", panel.right - 14f, y, screenWidth * 0.026f, if (c.isCompleted) 0xFFFFD700.toInt() else 0xFF90A4AE.toInt(), Paint.Align.RIGHT)
             }
+            nextTop = panel.bottom + screenHeight * 0.02f
         }
+        canvas.restore()
+        canvas.restore()
 
-        // Layout buttons
-        val btnW = screenWidth * 0.7f
-        val btnH = screenHeight * 0.055f
-        val gap = screenHeight * 0.018f
-
+        // ── Buttons ──────────────────────────────────────────────────
+        val btnW = screenWidth * 0.78f
+        val btnH = screenHeight * 0.058f
+        val gap = screenHeight * 0.017f
         val showWatchAd = AdManager.isRewardedReady() && !adRewardGiven
-        var nextTop = screenHeight * 0.78f
+        val bottomLimit = screenHeight - 0f - gap
+        var top = nextTop.coerceAtMost(bottomLimit - (btnH + gap) * (if (showWatchAd) 4 else 3))
 
-        // Watch Ad button (gold) - only if rewarded ad available and not yet claimed
         if (showWatchAd) {
-            watchAdButtonRect.set(cx - btnW / 2f, nextTop, cx + btnW / 2f, nextTop + btnH)
-            Renderer.drawButton(canvas, watchAdButtonRect, "WATCH AD  +${Constants.REWARD_AD_COINS} \u2605 & +${Constants.REWARD_AD_COINS} \uD83E\uDE99",
-                color = 0xFFFFD600, textColor = 0xFF1A1A2E)
-            nextTop += btnH + gap
+            watchAdButtonRect.set(cx - btnW / 2f, top, cx + btnW / 2f, top + btnH)
+            Renderer.drawGlossyButton(canvas, watchAdButtonRect, "\uD83C\uDFAC WATCH AD  +${Constants.REWARD_AD_COINS} \u2605 +${Constants.REWARD_AD_COINS} \uD83E\uDE99", 0xFFFFC400.toInt(), 0xFF2B1B00.toInt())
+            top += btnH + gap
         }
-
-
-        // Retry button (green)
-        retryButtonRect.set(cx - btnW / 2f, nextTop, cx + btnW / 2f, nextTop + btnH)
-        Renderer.drawButton(canvas, retryButtonRect, "RETRY", color = 0xFF00E676, textColor = 0xFF1A1A2E)
-
-        nextTop += btnH + gap
-
-        // Rate Us button (orange-amber)
-        rateButtonRect.set(cx - btnW / 2f, nextTop, cx + btnW / 2f, nextTop + btnH)
-        Renderer.drawButton(canvas, rateButtonRect, "\u2B50 RATE US", color = 0xFFFF9800, textColor = 0xFF1A1A2E)
-
-        nextTop += btnH + gap
-
-        // Menu button (gray)
-        menuButtonRect.set(cx - btnW / 2f, nextTop, cx + btnW / 2f, nextTop + btnH)
-        Renderer.drawButton(canvas, menuButtonRect, "MENU", color = 0xFF78909C, textColor = 0xFFFFFFFF)
+        retryButtonRect.set(cx - btnW / 2f, top, cx + btnW / 2f, top + btnH)
+        Renderer.drawGlossyButton(canvas, retryButtonRect, "\u21BB  RETRY", 0xFF00E676.toInt(), 0xFF06210F.toInt())
+        top += btnH + gap
+        rateButtonRect.set(cx - btnW / 2f, top, cx + btnW / 2f, top + btnH)
+        Renderer.drawGlossyButton(canvas, rateButtonRect, "\u2B50 RATE US", 0xFFFF9800.toInt(), 0xFF2B1600.toInt())
+        top += btnH + gap
+        menuButtonRect.set(cx - btnW / 2f, top, cx + btnW / 2f, top + btnH)
+        Renderer.drawGlossyButton(canvas, menuButtonRect, "MENU", 0xFF607D8B.toInt(), 0xFFFFFFFF.toInt())
     }
 
     private fun startHelicopterSound() {
@@ -757,9 +793,77 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
         canvas.drawPath(arrowPath, arrowPaint)
     }
 
+    // ── Dynamic Sky & Theme Rendering ──────────────────────────────
+
+    private fun renderBackground(canvas: Canvas) {
+        if (screenHeight != lastBgHeight || bgShader == null) {
+            lastBgHeight = screenHeight
+            val colors = when (currentTheme.id) {
+                1 -> intArrayOf(0xFF2A0845.toInt(), 0xFFFF4E50.toInt(), 0xFFF9D423.toInt()) // Sunset
+                2 -> intArrayOf(0xFF030811.toInt(), 0xFF0D1B2A.toInt(), 0xFF1B263B.toInt()) // Night
+                3 -> intArrayOf(0xFF090014.toInt(), 0xFF240046.toInt(), 0xFF3C096C.toInt()) // Cosmic Space
+                4 -> intArrayOf(0xFF00171F.toInt(), 0xFF003459.toInt(), 0xFF007EA7.toInt()) // Ocean
+                5 -> intArrayOf(0xFF880E4F.toInt(), 0xFFE91E63.toInt(), 0xFFF8BBD0.toInt()) // Sakura
+                else -> intArrayOf(0xFF004D40.toInt(), 0xFF00838F.toInt(), 0xFF26C6DA.toInt()) // Teal Sky
+            }
+            bgShader = LinearGradient(
+                0f, 0f, 0f, screenHeight,
+                colors, null, Shader.TileMode.CLAMP
+            )
+            bgGradientPaint.shader = bgShader
+        }
+        canvas.drawRect(0f, 0f, screenWidth, screenHeight, bgGradientPaint)
+
+        // Space / Night themes: draw starry background dust
+        if (currentTheme.id == 3 || currentTheme.id == 2) {
+            renderStarfield(canvas)
+        }
+
+        // Sunset theme: distant mountains silhouette
+        if (currentTheme.id == 1) {
+            renderSunsetMountains(canvas)
+        }
+    }
+
+    private fun renderStarfield(canvas: Canvas) {
+        val starPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() }
+        val camX = entityManager.cameraX * 0.08f
+        val camY = entityManager.cameraY * 0.08f
+        for (i in 0 until 40) {
+            val h = (i * 73856093L) and 0x7FFFFFFF
+            val sx = ((h % screenWidth.toInt()) - camX) % screenWidth
+            val sy = (((h / 100) % screenHeight.toInt()) - camY) % screenHeight
+            val px = if (sx < 0) sx + screenWidth else sx
+            val py = if (sy < 0) sy + screenHeight else sy
+            starPaint.alpha = (90 + (h % 165)).toInt()
+            val r = if (i % 6 == 0) 2.5f else 1.4f
+            canvas.drawCircle(px, py, r, starPaint)
+        }
+    }
+
+    private fun renderSunsetMountains(canvas: Canvas) {
+        val mtnPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x882A0845.toInt()
+            style = Paint.Style.FILL
+        }
+        val path = android.graphics.Path()
+        val baseY = screenHeight * 0.90f
+        path.moveTo(0f, screenHeight)
+        path.lineTo(0f, baseY)
+        path.lineTo(screenWidth * 0.28f, baseY - screenHeight * 0.045f)
+        path.lineTo(screenWidth * 0.62f, baseY + screenHeight * 0.02f)
+        path.lineTo(screenWidth, baseY - screenHeight * 0.035f)
+        path.lineTo(screenWidth, screenHeight)
+        path.close()
+        canvas.drawPath(path, mtnPaint)
+    }
+
     // ── Scrolling clouds ─────────────────────────────────────────────
 
     private fun renderClouds(canvas: Canvas) {
+        // Subtle clouds for non-space themes
+        if (currentTheme.id == 3) return
+
         val camX = entityManager.cameraX
         val camY = entityManager.cameraY
         val gridSize = 400f
@@ -797,200 +901,207 @@ class GameScreen(private val surfaceView: GameSurfaceView) : Screen {
     // ── HUD rendering ────────────────────────────────────────────────
 
     private fun renderHud(canvas: Canvas) {
-        val padding = screenWidth * 0.03f
+        val pad = screenWidth * 0.035f
         val safeTop = GameSurfaceView.safeInsetTop
-        val topY = safeTop + padding
-        val hudTextSize = screenWidth * 0.045f
-        val smallTextSize = screenWidth * 0.032f
+        val big = screenWidth * 0.058f
+        val small = screenWidth * 0.028f
+        val t = entityManager.survivalTime
+        val totalSeconds = t.toInt()
+        val timeStr = String.format("%d:%02d", totalSeconds / 60, totalSeconds % 60)
+        val cardH = big * 2.15f
 
-        // Score (top center)
-        scorePaint.textSize = hudTextSize * 1.3f
-        canvas.drawText(
-            "${entityManager.score}",
-            screenWidth / 2f, topY + hudTextSize,
-            scorePaint
+        // ── Level Progress Bar (placed at the very top, strictly ABOVE score & star cards) ──
+        val progH = small * 1.55f
+        var progBottom = safeTop
+        if (effectiveLevelConfig != null) {
+            val cfg = effectiveLevelConfig
+            val progW = screenWidth * 0.84f
+            val progX = (screenWidth - progW) / 2f
+            val progY = (safeTop + 4f).coerceAtLeast(6f)
+            progBottom = progY + progH
+
+            val pRect = RectF(progX, progY, progX + progW, progY + progH)
+            Renderer.drawGlassPanel(canvas, pRect, 0xFF00E5FF.toInt(), progH / 2f, 0xEE0B1528.toInt(), 0xEE040814.toInt())
+
+            val fillPillW = (progW - 6f) * entityManager.levelProgress
+            if (fillPillW > 0f) {
+                val fRect = RectF(progX + 3f, progY + 3f, progX + 3f + fillPillW, progY + progH - 3f)
+                Renderer.drawProgressPill(canvas, fRect, entityManager.levelProgress, 0xFF00E676.toInt())
+            }
+
+            // Moving Jet icon on track
+            val jetX = (progX + 3f + fillPillW).coerceIn(progX + 14f, progX + progW - 18f)
+            Renderer.drawShadowText(canvas, "✈", jetX, progY + progH * 0.74f, small * 0.90f, 0xFFFFFFFF.toInt(), Paint.Align.CENTER)
+
+            // Finish Carrier flag on the right edge
+            Renderer.drawShadowText(canvas, "🏁", progX + progW - 10f, progY + progH * 0.74f, small * 0.75f, 0xFFFFD700.toInt(), Paint.Align.CENTER)
+
+            // Dynamic progress readout: Distance completed / Target distance (percentage) + Remaining distance
+            val curM = (cfg.distanceMeters * entityManager.levelProgress).toInt()
+            val remainingM = (cfg.distanceMeters - curM).coerceAtLeast(0)
+            val progPercent = (entityManager.levelProgress * 100).toInt()
+            val progLabel = "LVL ${cfg.levelNumber}: $curM / ${cfg.distanceMeters}m ($progPercent%)  •  ${remainingM}m LEFT"
+            Renderer.drawShadowText(canvas, progLabel, screenWidth / 2f, progY + progH * 0.72f, small * 0.70f, 0xFFFFD700.toInt(), Paint.Align.CENTER)
+        }
+
+        // ── Cards vertical position (strictly below progress bar, zero overlap) ──
+        val topY = if (effectiveLevelConfig != null) {
+            maxOf(safeTop + pad, progBottom + 8f)
+        } else {
+            safeTop + pad
+        }
+
+        // ── Score card (top-left) ───────────────────────────────────
+        val leftW = screenWidth * 0.42f
+        val leftRect = RectF(pad, topY, pad + leftW, topY + cardH)
+        Renderer.drawGlassPanel(canvas, leftRect, 0xFF00E5FF.toInt())
+        Renderer.drawShadowText(canvas, "SCORE", leftRect.left + 16f, topY + small * 1.25f, small * 0.8f, 0xFF7FDBFF.toInt())
+        Renderer.drawShadowText(canvas, "${entityManager.score}", leftRect.left + 16f, topY + small * 1.25f + big * 0.95f, big, 0xFFFFFFFF.toInt())
+        Renderer.drawShadowText(
+            canvas, "\uD83C\uDFC6 ${GameData.highScore.coerceAtLeast(entityManager.score)}",
+            leftRect.right - 14f, topY + small * 1.25f, small * 0.85f, 0xFFFFD700.toInt(), Paint.Align.RIGHT
         )
 
-        // Stars collected (top right with star icon)
-        starHudPaint.textSize = smallTextSize
-        val starText = "${entityManager.starsCollected}"
-        val starTextX = screenWidth - padding
-        val starTextY = topY + smallTextSize
+        // ── Stars / time card (top-right) ───────────────────────────
+        val rightW = screenWidth * 0.36f
+        val rightRect = RectF(screenWidth - pad - rightW, topY, screenWidth - pad, topY + cardH)
+        Renderer.drawGlassPanel(canvas, rightRect, 0xFFFFD700.toInt())
+        val starPulse = 1f + 0.08f * sin(t * 5f).toFloat()
+        Renderer.drawStar(canvas, Vector2(rightRect.left + 30f, topY + cardH * 0.32f), small * 0.95f * starPulse, 5, Constants.STAR_COLOR)
+        Renderer.drawShadowText(canvas, "${entityManager.starsCollected}", rightRect.left + 30f + small * 1.5f, topY + cardH * 0.32f + small * 0.55f, big * 0.8f, 0xFFFFFFFF.toInt())
+        Renderer.drawShadowText(canvas, "\u23F1 $timeStr", rightRect.left + 18f, topY + cardH * 0.82f, small * 0.95f, 0xFF00E5FF.toInt())
+        Renderer.drawShadowText(canvas, "+${entityManager.starsCollected}\uD83E\uDE99", rightRect.right - 14f, topY + cardH * 0.82f, small * 0.95f, 0xFFFFD700.toInt(), Paint.Align.RIGHT)
 
-        val starIconX = starTextX - starHudPaint.measureText(starText) - smallTextSize * 0.8f
-        Renderer.drawStar(
-            canvas,
-            Vector2(starIconX, starTextY - smallTextSize * 0.3f),
-            smallTextSize * 0.45f,
-            5,
-            Constants.STAR_COLOR
-        )
-        canvas.drawText(starText, starTextX, starTextY, starHudPaint)
-
-        // Coins earned (below star count: 1 Star = 1 Coin)
-        val coinTextY = starTextY + smallTextSize * 1.3f
-        val coinText = "+${entityManager.starsCollected}"
-        val coinIconX = starTextX - starHudPaint.measureText(coinText) - smallTextSize * 0.8f
-        Renderer.drawCoin(
-            canvas,
-            Vector2(coinIconX, coinTextY - smallTextSize * 0.3f),
-            smallTextSize * 0.42f
-        )
-        canvas.drawText(coinText, starTextX, coinTextY, starHudPaint)
-
-        // Survival time (top left)
-        val totalSeconds = entityManager.survivalTime.toInt()
-        val minutes = totalSeconds / 60
-        val seconds = totalSeconds % 60
-        val timeStr = String.format("%d:%02d", minutes, seconds)
-        timePaint.textSize = smallTextSize
-        canvas.drawText(timeStr, padding, topY + smallTextSize, timePaint)
-
-        // Pause button (top-left, below time)
-        val pauseSize = hudTextSize * 1.2f
-        val pauseX = padding
-        val pauseY = topY + smallTextSize + padding * 0.5f
-        pauseButtonRect.set(pauseX, pauseY, pauseX + pauseSize, pauseY + pauseSize)
-        // Draw pause icon (two vertical bars)
-        val barW = pauseSize * 0.25f
-        val barH = pauseSize * 0.7f
-        val barTop = pauseY + (pauseSize - barH) / 2f
+        // ── Pause button (round glass) ──────────────────────────────
+        val ps = big * 1.3f
+        val py = topY + cardH + 14f
+        pauseButtonRect.set(pad, py, pad + ps, py + ps)
+        Renderer.drawGlassPanel(canvas, pauseButtonRect, 0xFF00E5FF.toInt(), ps / 2f)
         pauseIconPaint.color = 0xFFFFFFFF.toInt()
-        pauseIconPaint.alpha = 200
-        canvas.drawRoundRect(
-            RectF(pauseX + pauseSize * 0.15f, barTop, pauseX + pauseSize * 0.15f + barW, barTop + barH),
-            3f, 3f, pauseIconPaint
-        )
-        canvas.drawRoundRect(
-            RectF(pauseX + pauseSize * 0.6f, barTop, pauseX + pauseSize * 0.6f + barW, barTop + barH),
-            3f, 3f, pauseIconPaint
-        )
+        val bw = ps * 0.14f
+        val bh = ps * 0.38f
+        val bTop = py + (ps - bh) / 2f
+        canvas.drawRoundRect(RectF(pad + ps * 0.34f - bw / 2f, bTop, pad + ps * 0.34f + bw / 2f, bTop + bh), 3f, 3f, pauseIconPaint)
+        canvas.drawRoundRect(RectF(pad + ps * 0.66f - bw / 2f, bTop, pad + ps * 0.66f + bw / 2f, bTop + bh), 3f, 3f, pauseIconPaint)
 
-        // Power-up timer bars (data-driven, stacked below score)
-        val barWidth = screenWidth * 0.3f
-        val barHeight = screenHeight * 0.012f
-        val barX = (screenWidth - barWidth) / 2f
-        val barSpacing = screenHeight * 0.04f
-
+        // ── Power-up chips (right column, with timer pills) ─────────
         val warnTime = Constants.POWERUP_WARN_TIME
-        val gameTime = entityManager.survivalTime
         val p = entityManager.player
-
         val bars = listOf(
-            BarInfo(p.shieldActive, Float.MAX_VALUE, Float.MAX_VALUE, "SHIELD", "SHIELD", Constants.SHIELD_COLOR),
-            BarInfo(p.speedBoostActive, p.speedBoostTimer, Constants.SPEED_BOOST_DURATION, "BOOST", "BOOST ENDING!", Constants.SPEED_BOOST_COLOR),
-            BarInfo(p.slowMotionActive, p.slowMotionTimer, Constants.SLOW_MOTION_DURATION, "SLOW-MO", "SLOW-MO ENDING!", Constants.SLOW_MOTION_COLOR),
-            BarInfo(p.missileJammerActive, p.missileJammerTimer, Constants.MISSILE_JAMMER_DURATION, "JAMMER", "JAMMER ENDING!", Constants.MISSILE_JAMMER_COLOR),
+            BarInfo(p.shieldActive, Float.MAX_VALUE, Float.MAX_VALUE, "\uD83D\uDEE1 SHIELD", "SHIELD", Constants.SHIELD_COLOR),
+            BarInfo(p.speedBoostActive, p.speedBoostTimer, Constants.SPEED_BOOST_DURATION, "\u26A1 BOOST", "BOOST ENDING!", Constants.SPEED_BOOST_COLOR),
+            BarInfo(p.slowMotionActive, p.slowMotionTimer, Constants.SLOW_MOTION_DURATION, "\u231B SLOW-MO", "SLOW-MO ENDING!", Constants.SLOW_MOTION_COLOR),
+            BarInfo(p.missileJammerActive, p.missileJammerTimer, Constants.MISSILE_JAMMER_DURATION, "\uD83D\uDCE1 JAMMER", "JAMMER ENDING!", Constants.MISSILE_JAMMER_COLOR),
             BarInfo(p.doubleScoreActive, p.doubleScoreTimer, Constants.DOUBLE_SCORE_DURATION, "2X SCORE", "2X ENDING!", Constants.DOUBLE_SCORE_COLOR),
-            BarInfo(p.bulletShootActive, p.bulletShootTimer, Constants.BULLET_SHOOT_DURATION, "BULLET", "BULLET ENDING!", Constants.BULLET_SHOOT_COLOR)
+            BarInfo(p.bulletShootActive, p.bulletShootTimer, Constants.BULLET_SHOOT_DURATION, "\uD83C\uDFAF BULLET", "BULLET ENDING!", Constants.BULLET_SHOOT_COLOR)
         )
-
-        var barIndex = 0
+        val chipW = rightW
+        val chipH = small * 2.5f
+        var chipY = topY + cardH + 14f
         for (bar in bars) {
             if (!bar.active) continue
-            val barY = padding + hudTextSize * 1.8f + barIndex * barSpacing
             val expiring = bar.timer in 0f..warnTime && bar.duration != Float.MAX_VALUE
-            val flashVisible = !expiring || (gameTime * 8f).toInt() % 2 == 0
-
-            barRect.set(barX, barY, barX + barWidth, barY + barHeight)
-            canvas.drawRoundRect(barRect, 4f, 4f, barBgPaint)
-
-            if (flashVisible) {
-                val fill = if (bar.duration == Float.MAX_VALUE) 1f
-                           else (bar.timer / bar.duration).coerceIn(0f, 1f)
-                barFillPaint.color = bar.color.toInt()
-                barRect.set(barX, barY, barX + barWidth * fill, barY + barHeight)
-                canvas.drawRoundRect(barRect, 4f, 4f, barFillPaint)
-            }
-            Renderer.drawText(
+            val flash = !expiring || (t * 8f).toInt() % 2 == 0
+            val chip = RectF(screenWidth - pad - chipW, chipY, screenWidth - pad, chipY + chipH)
+            Renderer.drawGlassPanel(canvas, chip, bar.color.toInt(), chipH * 0.35f)
+            Renderer.drawShadowText(
                 canvas, if (expiring) bar.expiringLabel else bar.label,
-                screenWidth / 2f, barY - 4f,
-                size = smallTextSize * 0.7f,
-                color = bar.color,
-                align = Paint.Align.CENTER
+                chip.left + 12f, chip.top + chipH * 0.46f, small * 0.8f,
+                bar.color.toInt(), Paint.Align.LEFT, if (flash) 255 else 110
             )
-            barIndex++
+            val fill = if (bar.duration == Float.MAX_VALUE) 1f else (bar.timer / bar.duration).coerceIn(0f, 1f)
+            val pill = RectF(chip.left + 12f, chip.bottom - chipH * 0.27f, chip.right - 12f, chip.bottom - chipH * 0.12f)
+            Renderer.drawProgressPill(canvas, pill, fill, bar.color.toInt())
+            chipY += chipH + 8f
         }
 
-        // ── Combo / streak display ──────────────────────────────────
+        // ── Combo badge ─────────────────────────────────────────────
         if (entityManager.comboActive) {
-            comboPaint.textSize = smallTextSize * 1.1f
-            val comboText = "COMBO x${entityManager.starStreak} (1.5x)"
-            val pulseFactor = 0.8f + 0.2f * sin(entityManager.survivalTime * 6f).toFloat()
-            comboPaint.alpha = (pulseFactor * 255).toInt().coerceIn(0, 255)
-            canvas.drawText(comboText, screenWidth / 2f, screenHeight * 0.15f, comboPaint)
+            val pulse = 1f + 0.06f * sin(t * 6f).toFloat()
+            val bw2 = screenWidth * 0.34f * pulse
+            val bh2 = small * 2.2f * pulse
+            val cy = screenHeight * 0.115f
+            val badge = RectF(screenWidth / 2f - bw2 / 2f, cy - bh2 / 2f, screenWidth / 2f + bw2 / 2f, cy + bh2 / 2f)
+            Renderer.drawGlassPanel(canvas, badge, 0xFFFF9100.toInt(), bh2 / 2f, 0xE6663300.toInt(), 0xE6331A00.toInt())
+            Renderer.drawShadowText(canvas, "\uD83D\uDD25 COMBO x${entityManager.starStreak}", screenWidth / 2f, cy + small * 0.4f, small * 1.05f, 0xFFFFD54F.toInt(), Paint.Align.CENTER)
         }
 
-        // Missile destroy streak indicator
-        if (entityManager.missileDestroyStreak > 0) {
-            val streakText = "Destroy streak: ${entityManager.missileDestroyStreak}/${Constants.MISSILE_DESTROY_STREAK_FOR_SHIELD}"
-            Renderer.drawText(
-                canvas, streakText,
-                screenWidth / 2f, screenHeight * 0.18f,
-                size = smallTextSize * 0.7f,
-                color = Constants.SHIELD_COLOR,
-                align = Paint.Align.CENTER
-            )
+        // ── Missile destroy streak (combo dots) ──────────────────────
+        val streak = entityManager.missileDestroyStreak
+        if (streak > 0) {
+            val need = Constants.MISSILE_DESTROY_STREAK_FOR_SHIELD
+            val sy = screenHeight * 0.265f
+            val dotR = small * 0.38f
+            val gap = dotR * 3f
+            val startX = screenWidth / 2f - (need - 1) * gap / 2f
+            Renderer.drawShadowText(canvas, "COMBO STREAK", screenWidth / 2f, sy - dotR * 2.2f, small * 0.7f, 0xFFFFD54F.toInt(), Paint.Align.CENTER)
+            for (i in 0 until need) {
+                val filled = i < streak
+                Renderer.drawCircle(canvas, Vector2(startX + i * gap, sy), dotR, if (filled) 0xFFFFB300L else 0x55FFFFFFL)
+            }
         }
 
-        // ── Boss warning / HP ───────────────────────────────────────
+        // ── Boss warning + HP in one panel ──────────────────────────
         if (entityManager.bossAlive) {
-            bossWarnPaint.textSize = hudTextSize
-            val pulse = 0.6f + 0.4f * sin(entityManager.survivalTime * 5f).toFloat()
-            bossWarnPaint.alpha = (pulse * 255).toInt().coerceIn(0, 255)
-            canvas.drawText("BOSS!", screenWidth / 2f, screenHeight * 0.22f, bossWarnPaint)
+            val pulse = 0.65f + 0.35f * sin(t * 8f).toFloat()
+            val warnW = screenWidth * 0.78f
+            val warnH = big * 1.9f
+            val warnY = screenHeight * 0.19f
+            val warnRect = RectF(screenWidth / 2f - warnW / 2f, warnY - warnH / 2f, screenWidth / 2f + warnW / 2f, warnY + warnH / 2f)
+            Renderer.drawGlassPanel(canvas, warnRect, 0xFFFF1744.toInt(), 16f, 0xEE4A0010.toInt(), 0xEE1A0008.toInt())
+            Renderer.drawShadowText(
+                canvas, "\u26A0 TITAN MISSILE INCOMING", screenWidth / 2f, warnRect.top + warnH * 0.4f,
+                small * 0.95f, 0xFFFF5252.toInt(), Paint.Align.CENTER, (pulse * 255).toInt().coerceIn(0, 255)
+            )
+            val boss = entityManager.bosses.firstOrNull()
+            if (boss != null && boss.alive) {
+                val frac = (boss.hp.toFloat() / boss.maxHp.toFloat()).coerceIn(0f, 1f)
+                val hp = RectF(warnRect.left + 16f, warnRect.bottom - warnH * 0.34f, warnRect.right - 16f, warnRect.bottom - warnH * 0.16f)
+                Renderer.drawProgressPill(canvas, hp, frac, 0xFFFF1744.toInt())
+            }
         }
 
-        // ── Tutorial tooltips (first game only) ─────────────────────
+        // ── Tutorial tooltip (first game only) ──────────────────────
         if (!GameData.tutorialShown && tutorialStep < tutorialMessages.size) {
             val msg = tutorialMessages[tutorialStep]
-            tutorialPaint.textSize = screenWidth * 0.035f
-
-            val tooltipY = screenHeight * 0.88f
-            val tooltipW = screenWidth * 0.8f
-            val tooltipH = screenWidth * 0.07f
-
-            // Background pill
-            val bgRect = RectF(
-                screenWidth / 2f - tooltipW / 2f,
-                tooltipY - tooltipH / 2f,
-                screenWidth / 2f + tooltipW / 2f,
-                tooltipY + tooltipH / 2f
-            )
-            canvas.drawRoundRect(bgRect, 16f, 16f, tutorialBgPaint)
-
-            // Fade in/out
+            val tipW = screenWidth * 0.84f
+            val tipH = screenWidth * 0.11f
+            val tipY = screenHeight * 0.88f
+            val tip = RectF(screenWidth / 2f - tipW / 2f, tipY - tipH / 2f, screenWidth / 2f + tipW / 2f, tipY + tipH / 2f)
             val fadeIn = (tutorialTimer / 0.5f).coerceIn(0f, 1f)
             val fadeOut = if (tutorialTimer > 3.5f) 1f - ((tutorialTimer - 3.5f) / 0.5f).coerceIn(0f, 1f) else 1f
-            tutorialPaint.alpha = (fadeIn * fadeOut * 255).toInt().coerceIn(0, 255)
-
-            canvas.drawText(msg, screenWidth / 2f, tooltipY + tutorialPaint.textSize / 3f, tutorialPaint)
+            val a = (fadeIn * fadeOut * 255).toInt().coerceIn(0, 255)
+            canvas.saveLayerAlpha(tip.left - 10f, tip.top - 10f, tip.right + 10f, tip.bottom + 14f, a)
+            Renderer.drawGlassPanel(canvas, tip, 0xFF00E5FF.toInt(), tipH / 2f)
+            Renderer.drawShadowText(canvas, "\uD83D\uDCA1 $msg", screenWidth / 2f, tipY + screenWidth * 0.012f, screenWidth * 0.034f, 0xFFFFFFFF.toInt(), Paint.Align.CENTER)
+            canvas.restore()
         }
     }
 
     // ── Pause overlay ─────────────────────────────────────────────────
 
     private fun renderPauseOverlay(canvas: Canvas) {
-        // Dim background
         canvas.drawRect(0f, 0f, screenWidth, screenHeight, overlayPaint)
-
         val cx = screenWidth / 2f
 
-        // "PAUSED" title
-        goTitlePaint.textSize = screenWidth * 0.1f
-        canvas.drawText("PAUSED", cx, screenHeight * 0.38f, goTitlePaint)
+        val cardW = screenWidth * 0.8f
+        val cardH = screenHeight * 0.34f
+        val card = RectF(cx - cardW / 2f, screenHeight * 0.33f, cx + cardW / 2f, screenHeight * 0.33f + cardH)
+        Renderer.drawGlassPanel(canvas, card, 0xFF00E5FF.toInt(), 28f)
 
-        // Buttons
-        val btnW = screenWidth * 0.6f
-        val btnH = screenHeight * 0.06f
-        val gap = screenHeight * 0.02f
+        Renderer.drawShadowText(canvas, "PAUSED", cx, card.top + cardH * 0.24f, screenWidth * 0.095f, 0xFFFFFFFF.toInt(), Paint.Align.CENTER)
+        Renderer.drawShadowText(
+            canvas, "Score ${entityManager.score}  \u2022  \u2605 ${entityManager.starsCollected}",
+            cx, card.top + cardH * 0.38f, screenWidth * 0.036f, 0xFF7FDBFF.toInt(), Paint.Align.CENTER
+        )
 
-        val resumeTop = screenHeight * 0.48f
+        val btnW = cardW * 0.8f
+        val btnH = cardH * 0.18f
+        val resumeTop = card.top + cardH * 0.50f
         pauseResumeRect.set(cx - btnW / 2f, resumeTop, cx + btnW / 2f, resumeTop + btnH)
-        Renderer.drawButton(canvas, pauseResumeRect, "RESUME", color = 0xFF00E676, textColor = 0xFF1A1A2E)
-
-        val menuTop = resumeTop + btnH + gap
+        Renderer.drawGlossyButton(canvas, pauseResumeRect, "\u25B6  RESUME", 0xFF00E676.toInt(), 0xFF06210F.toInt())
+        val menuTop = resumeTop + btnH + cardH * 0.1f
         pauseMenuRect.set(cx - btnW / 2f, menuTop, cx + btnW / 2f, menuTop + btnH)
-        Renderer.drawButton(canvas, pauseMenuRect, "MENU", color = 0xFF78909C, textColor = 0xFFFFFFFF)
+        Renderer.drawGlossyButton(canvas, pauseMenuRect, "MENU", 0xFF607D8B.toInt(), 0xFFFFFFFF.toInt())
     }
 }

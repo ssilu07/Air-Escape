@@ -137,33 +137,59 @@ class GameOverScreen(
         val safeBottom = GameSurfaceView.safeInsetBottom + GameSurfaceView.bannerHeight
         val usableH = (screenHeight - safeTop - safeBottom).coerceAtLeast(screenHeight * 0.70f)
 
-        // "GAME OVER" text
-        val goSize = screenWidth * 0.12f
+        // "GAME OVER" text with neon glow
+        val goSize = screenWidth * 0.11f
         gameOverPaint.textSize = goSize
-        canvas.drawText("GAME OVER", centerX, safeTop + usableH * 0.18f, gameOverPaint)
+        canvas.drawText("GAME OVER", centerX, safeTop + usableH * 0.16f, gameOverPaint)
+
+        // Rank determination based on score
+        val (rankTitle, rankColor) = when {
+            score >= 3000 -> "TITAN SLAYER [DIAMOND]" to 0xFF00E5FF.toInt()
+            score >= 1500 -> "ELITE COMMANDER [GOLD]" to 0xFFFFD700.toInt()
+            score >= 600 -> "VETERAN ACE [SILVER]" to 0xFFE0E0E0.toInt()
+            else -> "ROOKIE CADET [BRONZE]" to 0xFFCD7F32.toInt()
+        }
+
+        // Debrief Tech Card (Screenshot 5 style)
+        val cardW = screenWidth * 0.86f
+        val cardTop = safeTop + usableH * 0.20f
+        val cardBottom = safeTop + usableH * 0.65f
+        val cardRect = RectF(centerX - cardW / 2f, cardTop, centerX + cardW / 2f, cardBottom)
+        Renderer.drawTechPanel(canvas, cardRect, 0xEE0D1B2A.toInt(), rankColor, 16f)
+
+        // Pilot Rank Badge
+        detailPaint.textSize = screenWidth * 0.038f
+        detailPaint.color = rankColor
+        detailPaint.isFakeBoldText = true
+        canvas.drawText("\uD83C\uDFC6 PILOT RANK: $rankTitle", centerX, cardTop + screenWidth * 0.08f, detailPaint)
+        detailPaint.isFakeBoldText = false
 
         // Score
-        scorePaint.textSize = screenWidth * 0.09f
-        canvas.drawText("$score", centerX, safeTop + usableH * 0.30f, scorePaint)
+        scorePaint.textSize = screenWidth * 0.10f
+        canvas.drawText("$score", centerX, cardTop + screenWidth * 0.20f, scorePaint)
 
-        scorePaint.textSize = screenWidth * 0.035f
-        canvas.drawText("SCORE", centerX, safeTop + usableH * 0.325f, scorePaint)
+        scorePaint.textSize = screenWidth * 0.032f
+        scorePaint.color = 0xFF81D4FA.toInt()
+        canvas.drawText("FINAL SCORE  \u2022  HIGH: ${GameData.highScore.coerceAtLeast(score)}", centerX, cardTop + screenWidth * 0.25f, scorePaint)
+        scorePaint.color = 0xFFFFFFFF.toInt()
 
         // Stars + Coins collected (1 Star = 1 Coin)
         val starIcon = "\u2605"
         val coinIcon = "\uD83E\uDE99"
-        detailPaint.textSize = screenWidth * 0.042f
+        detailPaint.textSize = screenWidth * 0.040f
+        detailPaint.color = 0xFFFFD700.toInt()
         canvas.drawText(
             "$starIcon $starsCollected Stars  |  $coinIcon $starsCollected Coins",
-            centerX, safeTop + usableH * 0.40f, detailPaint
+            centerX, cardTop + screenWidth * 0.33f, detailPaint
         )
 
         // Wallet balance
         detailPaint.textSize = screenWidth * 0.036f
+        detailPaint.color = 0xFFCCCCCC.toInt()
         val walletRs = String.format(java.util.Locale.US, "%.2f", GameData.totalCoins / Constants.COINS_PER_RUPEE.toFloat())
         canvas.drawText(
-            "Wallet: $coinIcon ${GameData.totalCoins} Coins (\u20B9$walletRs)",
-            centerX, safeTop + usableH * 0.45f, detailPaint
+            "Wallet Balance: $coinIcon ${GameData.totalCoins} Coins (\u20B9$walletRs)",
+            centerX, cardTop + screenWidth * 0.40f, detailPaint
         )
 
         // Survival time
@@ -172,14 +198,15 @@ class GameOverScreen(
         val seconds = totalSeconds % 60
         val timeStr = String.format("Survived %d:%02d", minutes, seconds)
         detailPaint.textSize = screenWidth * 0.038f
-        canvas.drawText(timeStr, centerX, safeTop + usableH * 0.50f, detailPaint)
+        detailPaint.color = 0xFF00E5FF.toInt()
+        canvas.drawText("\u23F1 $timeStr", centerX, cardTop + screenWidth * 0.47f, detailPaint)
 
         // New high score indicator (pulsing gold)
         if (isNewHighScore) {
             val pulse = 0.7f + 0.3f * sin(animTimer * 4f)
-            newHighScorePaint.textSize = screenWidth * 0.06f
+            newHighScorePaint.textSize = screenWidth * 0.055f
             newHighScorePaint.alpha = (pulse * 255).toInt().coerceIn(0, 255)
-            canvas.drawText("NEW HIGH SCORE!", centerX, safeTop + usableH * 0.58f, newHighScorePaint)
+            canvas.drawText("\u26A0 NEW HIGH SCORE! \u26A0", centerX, cardTop + screenWidth * 0.55f, newHighScorePaint)
         }
 
         // Retry button (green)

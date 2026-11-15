@@ -137,6 +137,56 @@ object GameData {
         get() = prefs.getBoolean("colorblind_mode", false)
         set(value) = prefs.edit().putBoolean("colorblind_mode", value).apply()
 
+    // ── Campaign / Level Mode Progress ─────────────────────────────────
+
+    var highestLevelUnlocked: Int
+        get() = prefs.getInt("highest_level_unlocked", 1).coerceAtLeast(1)
+        set(value) {
+            if (value > highestLevelUnlocked) {
+                prefs.edit().putInt("highest_level_unlocked", value).apply()
+            }
+        }
+
+    var selectedLevel: Int
+        get() = prefs.getInt("selected_level", 1).coerceAtLeast(1)
+        set(value) = prefs.edit().putInt("selected_level", value.coerceAtLeast(1)).apply()
+
+    var isLevelMode: Boolean
+        get() = prefs.getBoolean("is_level_mode", true)
+        set(value) = prefs.edit().putBoolean("is_level_mode", value).apply()
+
+    fun getLevelStars(level: Int): Int {
+        return prefs.getInt("level_stars_$level", 0).coerceIn(0, 3)
+    }
+
+    fun setLevelStars(level: Int, stars: Int) {
+        val current = getLevelStars(level)
+        if (stars > current) {
+            prefs.edit().putInt("level_stars_$level", stars.coerceIn(0, 3)).apply()
+        }
+    }
+
+    fun getLevelHighScore(level: Int): Int {
+        return prefs.getInt("level_score_$level", 0)
+    }
+
+    fun setLevelHighScore(level: Int, score: Int) {
+        val current = getLevelHighScore(level)
+        if (score > current) {
+            prefs.edit().putInt("level_score_$level", score).apply()
+        }
+    }
+
+    val totalCampaignStars: Int
+        get() {
+            var sum = 0
+            val maxLevel = highestLevelUnlocked.coerceAtLeast(1)
+            for (lvl in 1..maxLevel) {
+                sum += getLevelStars(lvl)
+            }
+            return sum
+        }
+
     // ── Theme system ──────────────────────────────────────────────────
 
     var selectedTheme: Int

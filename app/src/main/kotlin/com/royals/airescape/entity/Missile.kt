@@ -71,6 +71,9 @@ class Missile(
     /** True when this is a mini-missile spawned by a cluster explosion. */
     var isClusterMini: Boolean = false
 
+    /** True when player successfully pulled off a close-call near miss evasion. */
+    var nearMissTriggered: Boolean = false
+
     /** Remaining lifetime for cluster mini missiles. */
     var remainingLifetime: Float = Float.MAX_VALUE
 
@@ -246,6 +249,15 @@ class Missile(
             }
             canvas.drawPath(trailPath, trailPaint)
         }
+
+        // Rocket exhaust flame at tail
+        val tailDist = radius * 1.05f
+        val tailPos = Vector2(
+            position.x - kotlin.math.cos(angle) * tailDist,
+            position.y - kotlin.math.sin(angle) * tailDist
+        )
+        val flameLen = 13f + 3f * kotlin.math.sin(spawnTime * 25.0).toFloat()
+        Renderer.drawExhaustFlame(canvas, tailPos, angle, flameLen, 7f, false)
 
         // Missile body (bitmap or fallback triangle)
         val bmp = bulletBitmap

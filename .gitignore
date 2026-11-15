@@ -17,3 +17,5 @@ key.properties
 *.apk
 *.aab
 app/release/
+*service-account*.json
+*play*.json

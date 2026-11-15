@@ -92,7 +92,7 @@ object Constants {
     // Combo / Streak system
     const val STAR_STREAK_THRESHOLD = 5          // consecutive stars for bonus
     const val STAR_STREAK_MULTIPLIER = 1.5f      // score multiplier at streak
-    const val MISSILE_DESTROY_STREAK_FOR_SHIELD = 3  // destroys without getting hit → free shield
+    const val MISSILE_DESTROY_STREAK_FOR_SHIELD = 3  // destroys without getting hit → combo bonus streak
 
     // Boss fight
     const val BOSS_SPAWN_INTERVAL_MIN = 60f      // earliest boss spawn (seconds)
@@ -146,5 +146,8 @@ object Constants {
     // Supabase Cloud Configuration
     const val SUPABASE_URL = "https://ugnhfkhsjfkzepsnjiyk.supabase.co"
     const val SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVnbmhma2hzamZremVwc25qaXlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTUxNzksImV4cCI6MjEwMTA3MTE3OX0.H9TAR_WGfvzgUTsnxht-n-n7ywxlfQHoMkk65L7oWdo"
+
+    // Privacy Policy URL
+    const val PRIVACY_POLICY_URL = "https://royal-one.github.io/airescape/privacy_policy.html"
 }
 

@@ -87,6 +87,9 @@ class Player : Entity(
     // Extra life (for EXTRA_LIFE ability)
     var extraLifeAvailable: Boolean = false
 
+    // Animation timer for pulsing visuals & afterburners
+    var animTimer: Float = 0f
+
     // ── Trail particles ────────────────────────────────────────────
     data class TrailParticle(
         var position: Vector2,
@@ -164,6 +167,7 @@ class Player : Entity(
     // ── Update ─────────────────────────────────────────────────────
 
     override fun update(dt: Float) {
+        animTimer += dt
         val speed = getSpeed()
 
         // Steer toward joystick direction when active
@@ -322,6 +326,20 @@ class Player : Entity(
             canvas.drawCircle(p.position.x, p.position.y, 3f, trailPaint)
         }
 
+        // Afterburner engine exhaust flame at tail
+        val tailDist = radius * 1.15f
+        val tailPos = Vector2(
+            position.x - cos(angle) * tailDist,
+            position.y - sin(angle) * tailDist
+        )
+        val flameLen = if (speedBoostActive) {
+            30f + Random.nextFloat() * 10f
+        } else {
+            16f + 4f * sin(animTimer * 18.0).toFloat()
+        }
+        val flameWidth = if (speedBoostActive) 14f else 9f
+        Renderer.drawExhaustFlame(canvas, tailPos, angle, flameLen, flameWidth, speedBoostActive)
+
         // Plane (bitmap or fallback shape)
         val bmp = planeBitmap
         if (bmp != null) {
@@ -336,17 +354,20 @@ class Player : Entity(
             Renderer.drawPlane(canvas, position, angle, radius, planeColor.toLong(), planeType)
         }
 
-        // Shield overlay
-        if (shieldActive) {
-            val shieldRadius = radius + 10f
-            shieldPaint.color = Constants.SHIELD_COLOR.toInt()
-            shieldPaint.alpha = 120
-            shieldPaint.style = Paint.Style.FILL
-            canvas.drawCircle(position.x, position.y, shieldRadius, shieldPaint)
+        // Star Magnet visual orbit effect
+        if (ability == PlaneAbility.STAR_MAGNET) {
+            Renderer.drawOrbitRing(canvas, position, radius * 2.2f, animTimer, 0xFFFFD700.toInt())
+        }
 
-            shieldPaint.alpha = 200
-            shieldPaint.style = Paint.Style.STROKE
-            canvas.drawCircle(position.x, position.y, shieldRadius, shieldPaint)
+        // Hexagonal Energy Shield (matching Screenshot 3 & 4)
+        if (shieldActive) {
+            Renderer.drawHexagonShield(
+                canvas,
+                position,
+                radius + 15f,
+                animTimer,
+                Constants.SHIELD_COLOR.toInt()
+            )
         }
     }
 }

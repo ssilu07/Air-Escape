@@ -211,35 +211,49 @@ class PlaneSelectScreen(private val surfaceView: GameSurfaceView) : Screen {
             val cardH = rect.height()
             val cardW = rect.width()
 
-            // Card background
-            cardBgPaint.color = 0xFF2A2A3E.toInt()
+            // Card background (Dark sci-fi hangar style)
+            cardBgPaint.color = 0xFF161B26.toInt()
             canvas.drawRoundRect(rect, 14f, 14f, cardBgPaint)
 
             // Plane preview bitmap (upper half of card)
             val previewCenterX = rect.centerX()
-            val previewCenterY = rect.top + cardH * 0.32f
-            val previewSize = (cardW * 0.35f).coerceAtMost(cardH * 0.38f)
+            val previewCenterY = rect.top + cardH * 0.30f
+            val previewSize = (cardW * 0.35f).coerceAtMost(cardH * 0.36f)
             drawPlanePreview(canvas, previewCenterX, previewCenterY, previewSize, plane)
 
             // Name
             namePaint.textSize = cardW * 0.15f
-            canvas.drawText(plane.name, rect.centerX(), rect.top + cardH * 0.66f, namePaint)
+            canvas.drawText(plane.name, rect.centerX(), rect.top + cardH * 0.62f, namePaint)
 
-            // Speed modifier
+            // Stat bars (Speed & Power)
+            val barW = cardW * 0.8f
+            val barH = cardH * 0.035f
+            val barLeft = rect.centerX() - barW / 2f
+            val speedFraction = ((plane.speedModifier - 0.9f) / 0.4f).coerceIn(0.2f, 1f)
+            val statRect = RectF(barLeft, rect.top + cardH * 0.67f, barLeft + barW, rect.top + cardH * 0.67f + barH)
+            Renderer.drawStatBar(canvas, statRect, speedFraction, 0xFF00E5FF.toInt(), 0xFF0D1B2A.toInt())
+
+            detailPaint.textSize = cardW * 0.085f
             val speedText = String.format("Speed: %.0f%%", plane.speedModifier * 100)
-            detailPaint.textSize = cardW * 0.10f
-            canvas.drawText(speedText, rect.centerX(), rect.top + cardH * 0.74f, detailPaint)
+            canvas.drawText(speedText, rect.centerX(), rect.top + cardH * 0.76f, detailPaint)
 
-            // Ability (if any)
+            // Ability / Gun badge (Screenshot 2 style)
             if (plane.ability != PlaneAbility.NONE) {
-                detailPaint.color = 0xFF80CBC4.toInt()
-                detailPaint.textSize = cardW * 0.09f
-                canvas.drawText(plane.ability.description, rect.centerX(), rect.top + cardH * 0.82f, detailPaint)
+                detailPaint.color = 0xFFFFD700.toInt()
+                detailPaint.textSize = cardW * 0.082f
+                val badge = when (plane.ability) {
+                    PlaneAbility.STAR_MAGNET -> "\uD83E\uDDF2 MAGNET"
+                    PlaneAbility.SHIELD_REGEN -> "\uD83D\uDEE1 REGEN"
+                    PlaneAbility.SCORE_BONUS -> "\u2B50 1.2X SCORE"
+                    PlaneAbility.EXTRA_LIFE -> "\u2764 EXTRA LIFE"
+                    else -> ""
+                }
+                canvas.drawText(badge, rect.centerX(), rect.top + cardH * 0.83f, detailPaint)
                 detailPaint.color = 0xFFBBBBBB.toInt()
             } else if (plane.hasGun) {
-                detailPaint.color = Constants.BULLET_SHOOT_COLOR.toInt()
-                detailPaint.textSize = cardW * 0.09f
-                canvas.drawText("Built-in gun", rect.centerX(), rect.top + cardH * 0.82f, detailPaint)
+                detailPaint.color = 0xFF00E676.toInt()
+                detailPaint.textSize = cardW * 0.082f
+                canvas.drawText("\uD83D\uDD2B BLASTER", rect.centerX(), rect.top + cardH * 0.83f, detailPaint)
                 detailPaint.color = 0xFFBBBBBB.toInt()
             }
 
@@ -248,25 +262,25 @@ class PlaneSelectScreen(private val surfaceView: GameSurfaceView) : Screen {
                 canvas.drawRoundRect(rect, 14f, 14f, lockedOverlayPaint)
 
                 // Lock icon and cost
-                costPaint.textSize = cardW * 0.15f
-                val lockText = "\uD83D\uDD12 ${plane.unlockCost}"
-                canvas.drawText(lockText, rect.centerX(), rect.top + cardH * 0.92f, costPaint)
+                costPaint.textSize = cardW * 0.14f
+                val lockText = "\uD83D\uDD12 ${plane.unlockCost} \u2605"
+                canvas.drawText(lockText, rect.centerX(), rect.top + cardH * 0.93f, costPaint)
             } else {
                 if (plane.id == selectedId) {
                     // Selected border
                     canvas.drawRoundRect(rect, 14f, 14f, selectedPaint)
 
                     detailPaint.color = 0xFF00E676.toInt()
-                    detailPaint.textSize = cardW * 0.12f
-                    canvas.drawText("SELECTED", rect.centerX(), rect.top + cardH * 0.91f, detailPaint)
+                    detailPaint.textSize = cardW * 0.11f
+                    canvas.drawText("\u2713 SELECTED", rect.centerX(), rect.top + cardH * 0.92f, detailPaint)
                     detailPaint.color = 0xFFBBBBBB.toInt()
                 } else {
                     // Normal unlocked border
-                    cardBorderPaint.color = 0xFF555555.toInt()
+                    cardBorderPaint.color = 0xFF334E68.toInt()
                     canvas.drawRoundRect(rect, 14f, 14f, cardBorderPaint)
 
-                    detailPaint.textSize = cardW * 0.11f
-                    canvas.drawText("TAP TO SELECT", rect.centerX(), rect.top + cardH * 0.91f, detailPaint)
+                    detailPaint.textSize = cardW * 0.10f
+                    canvas.drawText("SELECT", rect.centerX(), rect.top + cardH * 0.92f, detailPaint)
                 }
             }
         }

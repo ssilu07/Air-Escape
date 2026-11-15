@@ -48,6 +48,9 @@ class SettingsScreen(private val surfaceView: GameSurfaceView) : Screen {
     // Cloud sync button
     private val cloudSyncRect = RectF()
 
+    // Privacy policy button
+    private val privacyPolicyRect = RectF()
+
     // Back button
     private val backButtonRect = RectF()
 
@@ -117,16 +120,22 @@ class SettingsScreen(private val surfaceView: GameSurfaceView) : Screen {
 
         // ── Cloud sync button ──────────────────────────────────────
         val syncW = sw * 0.5f
-        val syncH = sh * 0.045f
-        val syncY = sh * 0.78f
+        val syncH = sh * 0.042f
+        val syncY = sh * 0.76f
         cloudSyncRect.set((sw - syncW) / 2f, syncY, (sw + syncW) / 2f, syncY + syncH)
+
+        // ── Privacy policy button ──────────────────────────────────
+        val privW = sw * 0.5f
+        val privH = sh * 0.042f
+        val privY = sh * 0.815f
+        privacyPolicyRect.set((sw - privW) / 2f, privY, (sw + privW) / 2f, privY + privH)
 
         // ── Back button ──────────────────────────────────────────────
         val backW = sw * 0.6f
-        val backH = sh * 0.055f
+        val backH = sh * 0.05f
         backButtonRect.set(
-            (sw - backW) / 2f, sh * 0.85f,
-            (sw + backW) / 2f, sh * 0.85f + backH
+            (sw - backW) / 2f, sh * 0.875f,
+            (sw + backW) / 2f, sh * 0.875f + backH
         )
 
         layoutDone = true
@@ -207,6 +216,13 @@ class SettingsScreen(private val surfaceView: GameSurfaceView) : Screen {
             textColor = 0xFFFFFFFF
         )
 
+        // ── Privacy Policy button ───────────────────────────────────
+        Renderer.drawButton(
+            canvas, privacyPolicyRect, "PRIVACY POLICY",
+            color = 0xFF37474F,
+            textColor = 0xFFECEFF1
+        )
+
         // ── Back button ──────────────────────────────────────────────
         Renderer.drawButton(
             canvas, backButtonRect, "BACK",
@@ -271,6 +287,19 @@ class SettingsScreen(private val surfaceView: GameSurfaceView) : Screen {
                 try {
                     val bm = android.app.backup.BackupManager(surfaceView.context)
                     bm.dataChanged()
+                } catch (_: Exception) { }
+                return true
+            }
+
+            // Privacy policy
+            if (privacyPolicyRect.contains(x, y)) {
+                try {
+                    val browserIntent = android.content.Intent(
+                        android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse(Constants.PRIVACY_POLICY_URL)
+                    )
+                    browserIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    surfaceView.context.startActivity(browserIntent)
                 } catch (_: Exception) { }
                 return true
             }

@@ -1,0 +1,7 @@
+- NEW 500 Epic Campaign Levels across 50 unique Sector Operations!
+- Natural Smooth Kinetic Roadmap: Silky 60/120 FPS swipe scrolling with mini-map navigation
+- New Obstacles & Hazards: Floating Magnetic Mines, Laser Gates & Thunderstorms
+- Aircraft Carrier Finish Line Extraction Points with 3-Star Mission Ratings
+- Boss Battles every 10 levels & Grand Titan Apex Bosses every 50 levels
+- Upgraded Top HUD: Crisp live distance progress tracking with zero clutter
+- Balanced Power-Up mechanics, bug fixes & performance enhancements

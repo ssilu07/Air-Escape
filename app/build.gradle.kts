@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.github.triplet.play")
 }
 
 android {
@@ -43,8 +44,8 @@ android {
         applicationId = "com.royals.airescape"
         minSdk = 24
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.4"
+        versionCode = 7
+        versionName = "1.6"
     }
 
     buildTypes {
@@ -83,4 +84,13 @@ dependencies {
     implementation("com.google.android.gms:play-services-games-v2:20.1.2")
     implementation("com.google.android.play:review:2.0.2")
     implementation("com.google.android.play:review-ktx:2.0.2")
+}
+
+play {
+    val keyFile = rootProject.file("play-service-account.json")
+    if (keyFile.exists()) {
+        serviceAccountCredentials.set(keyFile)
+    }
+    track.set("production")
+    defaultToAppBundles.set(true)
 }

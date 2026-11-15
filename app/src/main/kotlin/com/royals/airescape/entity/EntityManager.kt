@@ -11,6 +11,7 @@ import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.ln
 import kotlin.math.sqrt
+import kotlin.math.sin
 import kotlin.random.Random
 
 /**
@@ -32,6 +33,17 @@ class EntityManager {
     val lottieBlasts: MutableList<LottieBlast> = mutableListOf()
     val bosses: MutableList<BossMissile> = mutableListOf()
     val floatingTexts: MutableList<FloatingText> = mutableListOf()
+
+    // ── Level Campaign Mode ──────────────────────────────────────────
+    var isLevelMode: Boolean = true
+    var levelConfig: com.royals.airescape.level.LevelConfig? = null
+    val airMines: MutableList<com.royals.airescape.level.AirMine> = mutableListOf()
+    val laserGates: MutableList<com.royals.airescape.level.LaserGate> = mutableListOf()
+    val lightningHazards: MutableList<com.royals.airescape.level.LightningHazard> = mutableListOf()
+    var finishLine: com.royals.airescape.level.FinishLine? = null
+    var levelWon: Boolean = false
+    var levelProgress: Float = 0f
+    var playerHitTaken: Boolean = false
 
 
     /** Bullet bitmap to apply to spawned missiles (homing). */
@@ -126,11 +138,17 @@ class EntityManager {
         screenHeight: Float,
         planeType: Int = 0,
         planeColor: Int = Constants.PLAYER_DEFAULT_COLOR.toInt(),
-        hardMode: Boolean = false
+        hardMode: Boolean = false,
+        levelConfig: com.royals.airescape.level.LevelConfig? = null
     ) {
         this.screenWidth = screenWidth
         this.screenHeight = screenHeight
         this.hardMode = hardMode
+        this.levelConfig = levelConfig
+        this.isLevelMode = (levelConfig != null)
+        this.levelWon = false
+        this.playerHitTaken = false
+        this.levelProgress = 0f
 
         // Clear collections
         missiles.clear()
@@ -141,6 +159,10 @@ class EntityManager {
         lottieBlasts.clear()
         bosses.clear()
         floatingTexts.clear()
+        airMines.clear()
+        laserGates.clear()
+        lightningHazards.clear()
+        finishLine = null
 
 
         // Reset score / timers
@@ -178,6 +200,93 @@ class EntityManager {
         // Initialize camera
         cameraX = player.position.x - screenWidth / 2f
         cameraY = player.position.y - screenHeight / 2f
+
+        if (levelConfig != null) {
+            setupLevelEntities(levelConfig!!)
+        }
+    }
+
+    private fun setupLevelEntities(config: com.royals.airescape.level.LevelConfig) {
+        val dist = config.targetDistance
+        val halfW = config.corridorWidth / 2f
+
+        // Finish Line at destination (straight ahead, negative Y)
+        finishLine = com.royals.airescape.level.FinishLine(
+            yPosition = -dist,
+            corridorWidth = config.corridorWidth
+        )
+
+        // Air Mines
+        airMines.clear()
+        if (config.airMinesCount > 0) {
+            val mineSpacing = (dist - 1200f) / config.airMinesCount
+            for (i in 0 until config.airMinesCount) {
+                val my = -700f - i * mineSpacing + (Random.nextFloat() - 0.5f) * (mineSpacing * 0.4f)
+                val mx = (Random.nextFloat() - 0.5f) * (halfW * 1.3f)
+                airMines.add(com.royals.airescape.level.AirMine(Vector2(mx, my)))
+            }
+        }
+
+        // Laser Gates
+        laserGates.clear()
+        if (config.laserGatesCount > 0) {
+            val gateSpacing = (dist - 1600f) / config.laserGatesCount
+            for (i in 0 until config.laserGatesCount) {
+                val gy = -1100f - i * gateSpacing
+                val spanW = (halfW * 1.4f).coerceAtMost(1600f)
+                laserGates.add(
+                    com.royals.airescape.level.LaserGate(
+                        yPosition = gy,
+                        xStart = -spanW / 2f,
+                        xEnd = spanW / 2f,
+                        cyclePeriod = 3.6f + (i % 3) * 0.6f,
+                        activeRatio = 0.62f
+                    )
+                )
+            }
+        }
+
+        // Lightning Storms
+        lightningHazards.clear()
+        if (config.hasStorms) {
+            val stormCount = (dist / 2200f).toInt().coerceAtLeast(2)
+            val stormSpacing = dist / stormCount
+            for (i in 0 until stormCount) {
+                val sy = -1000f - i * stormSpacing
+                val sx1 = (Random.nextFloat() - 0.5f) * halfW
+                val sx2 = (Random.nextFloat() - 0.5f) * halfW
+                lightningHazards.add(
+                    com.royals.airescape.level.LightningHazard(
+                        xStart = sx1 - 300f,
+                        yStart = sy - 350f,
+                        xEnd = sx2 + 300f,
+                        yEnd = sy + 350f,
+                        strikeInterval = 4.2f + (i % 2) * 1.5f
+                    )
+                )
+            }
+        }
+
+        // Pre-scatter Stars along the corridor path
+        stars.clear()
+        val starCount = config.targetStars * 2
+        val starSpacing = (dist - 600f) / starCount
+        for (i in 0 until starCount) {
+            val sy = -300f - i * starSpacing
+            val sx = sin(i * 0.65f) * (halfW * 0.55f)
+            stars.add(Star(Vector2(sx, sy)))
+        }
+
+        // Pre-scatter Power-Ups
+        powerUps.clear()
+        val puCount = (dist / 2400f).toInt().coerceAtLeast(2)
+        val types = com.royals.airescape.entity.PowerUpType.values()
+        for (i in 0 until puCount) {
+            val py = -1400f - i * 2400f
+            val px = (Random.nextFloat() - 0.5f) * (halfW * 0.5f)
+            val type = types[i % types.size]
+            powerUps.add(PowerUp(Vector2(px, py), type))
+        }
     }
 
     // ── Update ─────────────────────────────────────────────────────
@@ -196,44 +305,54 @@ class EntityManager {
 
         // ---- Spawning ------------------------------------------------
 
-        // Missiles — logarithmic difficulty curve with missile cap
+        // Missiles — logarithmic difficulty curve with missile cap or level config
         missileSpawnTimer += dt
-        // Slower ramp: ln(2) / ln(spawnCount + 3) — +3 instead of +2 for gentler curve
-        currentMissileInterval = (Constants.MISSILE_SPAWN_INITIAL * ln(2.0) / ln(spawnCount.toDouble() + 3.0))
-            .toFloat().coerceAtLeast(Constants.MISSILE_SPAWN_MIN)
-        val effectiveInterval = if (hardMode) {
-            currentMissileInterval / Constants.HARD_MODE_SPAWN_MULTIPLIER
+        val effectiveInterval: Float
+        val maxMissiles: Int
+        if (isLevelMode && levelConfig != null) {
+            effectiveInterval = levelConfig!!.missileSpawnInterval
+            maxMissiles = levelConfig!!.maxMissiles
         } else {
-            currentMissileInterval
+            // Slower ramp: ln(2) / ln(spawnCount + 3) — +3 instead of +2 for gentler curve
+            currentMissileInterval = (Constants.MISSILE_SPAWN_INITIAL * ln(2.0) / ln(spawnCount.toDouble() + 3.0))
+                .toFloat().coerceAtLeast(Constants.MISSILE_SPAWN_MIN)
+            effectiveInterval = if (hardMode) {
+                currentMissileInterval / Constants.HARD_MODE_SPAWN_MULTIPLIER
+            } else {
+                currentMissileInterval
+            }
+            maxMissiles = if (hardMode) Constants.MAX_MISSILES_HARD else Constants.MAX_MISSILES_NORMAL
         }
-        val maxMissiles = if (hardMode) Constants.MAX_MISSILES_HARD else Constants.MAX_MISSILES_NORMAL
-        if (missileSpawnTimer >= effectiveInterval && missiles.size < maxMissiles) {
+
+        if (!levelWon && missileSpawnTimer >= effectiveInterval && missiles.size < maxMissiles) {
             missileSpawnTimer = 0f
             spawnMissile()
             spawnCount++
         }
 
-        // Stars
-        starSpawnTimer += dt
-        if (starSpawnTimer >= Constants.STAR_SPAWN_INTERVAL) {
-            starSpawnTimer = 0f
-            spawnStar()
-        }
+        // Stars (only continuously spawn in endless mode, level mode has pre-placed stars)
+        if (!isLevelMode) {
+            starSpawnTimer += dt
+            if (starSpawnTimer >= Constants.STAR_SPAWN_INTERVAL) {
+                starSpawnTimer = 0f
+                spawnStar()
+            }
 
-        // Power-ups
-        powerUpSpawnTimer += dt
-        if (powerUpSpawnTimer >= Constants.POWERUP_SPAWN_INTERVAL) {
-            powerUpSpawnTimer = 0f
-            spawnPowerUp()
-        }
+            // Power-ups
+            powerUpSpawnTimer += dt
+            if (powerUpSpawnTimer >= Constants.POWERUP_SPAWN_INTERVAL) {
+                powerUpSpawnTimer = 0f
+                spawnPowerUp()
+            }
 
-        // Boss spawn
-        bossSpawnTimer += dt
-        if (bossSpawnTimer >= nextBossTime && !bossAlive) {
-            bossSpawnTimer = 0f
-            spawnBoss()
-            nextBossTime = Constants.BOSS_SPAWN_INTERVAL_MIN +
-                Random.nextFloat() * (Constants.BOSS_SPAWN_INTERVAL_MAX - Constants.BOSS_SPAWN_INTERVAL_MIN)
+            // Boss spawn in endless mode
+            bossSpawnTimer += dt
+            if (bossSpawnTimer >= nextBossTime && !bossAlive) {
+                bossSpawnTimer = 0f
+                spawnBoss()
+                nextBossTime = Constants.BOSS_SPAWN_INTERVAL_MIN +
+                    Random.nextFloat() * (Constants.BOSS_SPAWN_INTERVAL_MAX - Constants.BOSS_SPAWN_INTERVAL_MIN)
+            }
         }
 
         // ---- Player bullet auto-fire -----------------------------------
@@ -309,6 +428,10 @@ class EntityManager {
         checkPlayerBulletBossCollisions()
         checkPlayerStarCollisions()
         checkPlayerPowerUpCollisions()
+
+        if (isLevelMode && levelConfig != null) {
+            updateAndCheckLevelHurdles(dt)
+        }
 
         // ---- Cleanup dead / off-camera entities ----------------------
 
@@ -390,6 +513,14 @@ class EntityManager {
     // ── Render ─────────────────────────────────────────────────────
 
     fun render(canvas: Canvas) {
+        // In level mode, render finish line and ground/air hazards first
+        if (isLevelMode) {
+            finishLine?.render(canvas)
+            for (gate in laserGates) gate.render(canvas)
+            for (hz in lightningHazards) hz.render(canvas)
+            for (mine in airMines) mine.render(canvas)
+        }
+
         // Render order: stars -> power-ups -> player bullets -> missiles -> player -> explosions
         for (star in stars) star.render(canvas)
         for (powerUp in powerUps) powerUp.render(canvas)
@@ -400,6 +531,117 @@ class EntityManager {
         for (explosion in explosions) explosion.render(canvas)
         for (blast in lottieBlasts) LottieBlast.renderBlast(canvas, blast)
         for (ft in floatingTexts) ft.render(canvas)
+    }
+
+    private fun updateAndCheckLevelHurdles(dt: Float) {
+        val cfg = levelConfig ?: return
+        levelProgress = ((-player.position.y) / cfg.targetDistance).coerceIn(0f, 1f)
+
+        // Finish line victory check
+        if (!levelWon && !gameOver && finishLine?.hasPlayerReached(player.position) == true) {
+            levelWon = true
+            SoundManager.playPowerUp()
+            // Detonate remaining missiles into victory fireworks
+            for (m in missiles) {
+                if (m.alive) {
+                    m.alive = false
+                    explosions.add(Explosion(m.position, Constants.MISSILE_COLOR.toInt()))
+                }
+            }
+        }
+
+        finishLine?.update(dt)
+
+        // 1. Air Mines
+        val mineIter = airMines.iterator()
+        while (mineIter.hasNext()) {
+            val mine = mineIter.next()
+            if (!mine.alive) {
+                mineIter.remove()
+                continue
+            }
+            mine.updateWithPlayer(dt, player.position)
+
+            // Player collision
+            if (CollisionUtil.circleCircle(player.position, player.radius, mine.position, mine.radius)) {
+                mine.alive = false
+                explosions.add(Explosion(mine.position, 0xFFFF1744.toInt()))
+                SoundManager.playExplosion()
+                damagePlayer()
+                mineIter.remove()
+                continue
+            }
+
+            // Bullet collision
+            for (b in playerBullets) {
+                if (b.alive && CollisionUtil.circleCircle(b.position, b.radius, mine.position, mine.radius)) {
+                    b.alive = false
+                    mine.alive = false
+                    explosions.add(Explosion(mine.position, 0xFFFF1744.toInt()))
+                    SoundManager.playExplosion()
+                    score += 50
+                    break
+                }
+            }
+
+            // Missile collision with mine
+            for (m in missiles) {
+                if (m.alive && CollisionUtil.circleCircle(m.position, m.radius, mine.position, mine.radius)) {
+                    m.alive = false
+                    mine.alive = false
+                    explosions.add(Explosion(mine.position, 0xFFFF1744.toInt()))
+                    explosions.add(Explosion(m.position, Constants.MISSILE_COLOR.toInt()))
+                    SoundManager.playExplosion()
+                    score += 100
+                    missilesDestroyed++
+                    break
+                }
+            }
+        }
+
+        // 2. Laser Gates
+        for (gate in laserGates) {
+            gate.update(dt)
+            if (gate.checkCollision(player.position, player.radius)) {
+                damagePlayer()
+            }
+        }
+
+        // 3. Lightning Hazards
+        for (hz in lightningHazards) {
+            hz.update(dt)
+            if (hz.checkCollision(player.position, player.radius)) {
+                damagePlayer()
+            }
+        }
+
+        // 4. Milestone Boss spawn at 75% progress
+        if (cfg.hasBoss && levelProgress >= 0.75f && !bossAlive && bosses.isEmpty() && !levelWon && !gameOver) {
+            spawnBoss()
+        }
+    }
+
+    fun damagePlayer() {
+        if (gameOver || levelWon) return
+        playerHitTaken = true
+        if (player.shieldActive) {
+            player.deactivateShield()
+            SoundManager.playShieldHit()
+            triggerShake(Constants.SHAKE_INTENSITY)
+            floatingTexts.add(FloatingText(player.position, "SHIELD BROKEN!", Constants.SHIELD_COLOR.toInt()))
+        } else if (player.extraLifeAvailable) {
+            player.extraLifeAvailable = false
+            SoundManager.playShieldHit()
+            triggerShake(Constants.SHAKE_INTENSITY)
+            floatingTexts.add(FloatingText(player.position, "EXTRA LIFE USED!", 0xFF00E676.toInt()))
+        } else {
+            gameOver = true
+            explosions.add(Explosion(player.position, Constants.MISSILE_COLOR.toInt()))
+            explosions.add(Explosion(player.position, Constants.PLAYER_DEFAULT_COLOR.toInt()))
+            lottieBlasts.add(LottieBlast(player.position, size = 500f))
+            SoundManager.playExplosion()
+            triggerShake(Constants.SHAKE_INTENSITY_STRONG)
+        }
     }
 
 
@@ -451,6 +693,23 @@ class EntityManager {
                     SoundManager.playExplosion()
                     triggerShake(Constants.SHAKE_INTENSITY_STRONG)
                     return
+                }
+            } else if (!missile.nearMissTriggered) {
+                // Near miss detection (close-call dodge)
+                val dist = player.position.distance(missile.position)
+                val threshold = (player.radius + missile.radius) * 2.2f
+                if (dist <= threshold) {
+                    missile.nearMissTriggered = true
+                    val bonus = if (player.doubleScoreActive) 30 else 15
+                    score += bonus
+                    floatingTexts.add(
+                        FloatingText(
+                            position = player.position,
+                            text = "CLOSE CALL! +$bonus",
+                            color = 0xFF00E5FF.toInt(),
+                            size = 28f
+                        )
+                    )
                 }
             }
         }
@@ -865,10 +1124,14 @@ class EntityManager {
     // ── Streak helpers ──────────────────────────────────────────────
 
     private fun checkMissileDestroyStreak() {
-        if (missileDestroyStreak >= Constants.MISSILE_DESTROY_STREAK_FOR_SHIELD && !player.shieldActive) {
-            player.activateShield()
+        if (missileDestroyStreak >= Constants.MISSILE_DESTROY_STREAK_FOR_SHIELD) {
+            // Give score combo bonus instead of free auto-shield.
+            // Shields should ONLY be acquired by collecting the Shield Power-Up pickup crate!
+            val bonus = missileDestroyStreak * 100
+            score += bonus
+            floatingTexts.add(FloatingText(player.position, "+$bonus STREAK!", Constants.STAR_COLOR.toInt()))
             missileDestroyStreak = 0
-            SoundManager.playPowerUp()
+            SoundManager.playStarCollect()
         }
     }
 

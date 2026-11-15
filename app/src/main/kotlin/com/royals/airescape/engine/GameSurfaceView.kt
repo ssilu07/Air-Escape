@@ -55,6 +55,9 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
     fun setScreen(screen: Screen) {
         currentScreen?.onExit()
         currentScreen = screen
+        if (screenWidth > 0 && screenHeight > 0) {
+            screen.onSizeChanged(screenWidth.toFloat(), screenHeight.toFloat())
+        }
         screen.onEnter()
     }
 

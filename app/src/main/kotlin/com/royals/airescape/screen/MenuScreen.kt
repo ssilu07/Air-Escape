@@ -217,12 +217,14 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
 
         // Mode buttons (NORMAL / HARD)
         val isHard = GameData.hardMode
-        drawModeButton(canvas, normalModeRect, "NORMAL", !isHard)
-        drawModeButton(canvas, hardModeRect, "HARD", isHard)
+        val isCampaign = GameData.isLevelMode
+        drawModeButton(canvas, normalModeRect, "CAMPAIGN", isCampaign)
+        drawModeButton(canvas, hardModeRect, "ENDLESS", !isCampaign)
 
         // Play button (green)
+        val playText = if (isCampaign) "PLAY CAMPAIGN  ▶" else "START ENDLESS  ♾️"
         Renderer.drawButton(
-            canvas, playButtonRect, "PLAY",
+            canvas, playButtonRect, playText,
             color = 0xFF00E676,
             textColor = 0xFF1A1A2E
         )
@@ -294,17 +296,21 @@ class MenuScreen(private val surfaceView: GameSurfaceView) : Screen {
             val y = event.y
 
             if (normalModeRect.contains(x, y)) {
-                GameData.hardMode = false
+                GameData.isLevelMode = true
                 return true
             }
 
             if (hardModeRect.contains(x, y)) {
-                GameData.hardMode = true
+                GameData.isLevelMode = false
                 return true
             }
 
             if (playButtonRect.contains(x, y)) {
-                surfaceView.setScreen(GameScreen(surfaceView))
+                if (GameData.isLevelMode) {
+                    surfaceView.setScreen(LevelSelectScreen(surfaceView))
+                } else {
+                    surfaceView.setScreen(GameScreen(surfaceView, levelConfig = null))
+                }
                 return true
             }
 

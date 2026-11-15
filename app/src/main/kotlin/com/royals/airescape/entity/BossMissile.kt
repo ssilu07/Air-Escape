@@ -85,19 +85,55 @@ class BossMissile(
         val pulse = 1f + 0.05f * sin(pulseTimer * 5.0).toFloat()
         val curRadius = radius * pulse
 
+        // Targeting laser guide line toward player (warning cue)
+        val laserPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFF1744.toInt()
+            strokeWidth = 2f
+            alpha = (90 + 70 * sin(pulseTimer * 8.0)).toInt().coerceIn(0, 255)
+        }
+        canvas.drawLine(position.x, position.y, targetPosition.x, targetPosition.y, laserPaint)
+
+        // Draw mechanical armored vanes rotating around the core
+        val vaneCount = 4
+        val vaneStep = (Math.PI * 2.0 / vaneCount).toFloat()
+        val vaneRot = pulseTimer * 1.5f
+        val vanePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFF3D00.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = 4f
+        }
+        for (i in 0 until vaneCount) {
+            val a = vaneRot + i * vaneStep
+            val vx1 = position.x + cos(a) * curRadius * 0.9f
+            val vy1 = position.y + sin(a) * curRadius * 0.9f
+            val vx2 = position.x + cos(a) * curRadius * 1.35f
+            val vy2 = position.y + sin(a) * curRadius * 1.35f
+            canvas.drawLine(vx1, vy1, vx2, vy2, vanePaint)
+        }
+
         // Draw body
-        bodyPaint.color = Constants.BOSS_COLOR.toInt()
-        bodyPaint.alpha = 200
+        bodyPaint.color = 0xFF1A1A2E.toInt()
+        bodyPaint.alpha = 240
         canvas.drawCircle(position.x, position.y, curRadius, bodyPaint)
 
+        // Draw glowing inner energy core
+        val corePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFF1744.toInt()
+            style = Paint.Style.FILL
+            alpha = (180 + 75 * sin(pulseTimer * 10.0)).toInt().coerceIn(0, 255)
+        }
+        canvas.drawCircle(position.x, position.y, curRadius * 0.55f, corePaint)
+
         // Draw glowing outline
-        outlinePaint.color = 0xFFFF5252.toInt()
-        val alpha = (180 + 75 * sin(pulseTimer * 5.0)).toInt().coerceIn(0, 255)
+        outlinePaint.color = 0xFFFF9100.toInt()
+        val alpha = (200 + 55 * sin(pulseTimer * 5.0)).toInt().coerceIn(0, 255)
         outlinePaint.alpha = alpha
+        outlinePaint.strokeWidth = 4.5f
         canvas.drawCircle(position.x, position.y, curRadius, outlinePaint)
 
         // Draw BOSS text
-        textPaint.textSize = curRadius * 0.9f
+        textPaint.textSize = curRadius * 0.7f
+        textPaint.color = 0xFFFFFFFF.toInt()
         val textY = position.y + textPaint.textSize / 3f
         canvas.drawText("BOSS", position.x, textY, textPaint)
 
